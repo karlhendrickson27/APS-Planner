@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 
 export const COMPONENTS = [
-  { id: 'app', name: 'TeamSync app', url: 'https://production27.github.io/APS-Planner/', ok: (res, body) => res.ok && body.includes('TeamSync') },
+  { id: 'app', name: 'TeamSync app', url: 'https://app.useteamsync.com/', ok: (res, body) => res.ok && body.includes('TeamSync') },
   { id: 'api', name: 'Sync server', url: 'https://aps-planner-staging.production-db3.workers.dev/health', ok: (res, body) => res.ok && body.includes('"status":"ok"') },
 ];
 const KEEP_CHECKS_MS = 7 * 24 * 60 * 60 * 1000;

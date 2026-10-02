@@ -11,7 +11,7 @@ import { hashPasswordPBKDF2, genSaltHex, resolveIdentityFromToken } from './user
 import { base64UrlEncode } from './room-token.ts';
 
 const CLIENT_ID = 'client-123.apps.googleusercontent.com';
-const APP = 'https://production27.github.io/APS-Planner/';
+const APP = 'https://app.useteamsync.com/';
 const WORKER = 'https://aps-planner-staging.production-db3.workers.dev';
 
 // ---- a fake Google: an RSA key, its JWKS, and a token endpoint ----

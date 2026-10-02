@@ -60,6 +60,8 @@ const STATE_COOKIE = 'ts_sso_state';
 // Where the browser may be sent back to after signing in. Anything else is
 // refused, so the one-time code can't be delivered to someone else's page.
 export const ALLOWED_RETURN_PREFIXES = [
+  'https://app.useteamsync.com/',
+  // The old address, kept until everyone has moved to the new one.
   'https://production27.github.io/APS-Planner/',
 ];
 const LOCAL_RETURN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//;
