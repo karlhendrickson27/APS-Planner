@@ -18,6 +18,8 @@
 // listener is attached to, identical to an inline onclick's implicit
 // `this`. Everywhere else uses an arrow for brevity.
 import { showSettingsTab } from './settings-menu';
+import { initNotifications, closeNotifications } from './notifications';
+import { initMentionPicker } from './mention-picker';
 import { openExportModal, closeExportModal, runExport } from './export';
 import { openPrintModal, closePrintModal, syncPrintKind, runPrint } from './print';
 import { downloadIcs } from './ics';
@@ -130,7 +132,9 @@ export function initStaticEventListeners(): void {
       if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
   }
-  on('helpBtn', () => { closeSettingsMenu(); toggleHelp(); });
+  initNotifications();
+  initMentionPicker();
+  on('helpBtn', () => { closeSettingsMenu(); closeNotifications(); toggleHelp(); });
   on('settingsBtn', () => toggleSettingsMenu());
   on('accountBtn', () => toggleAccountMenu());
 

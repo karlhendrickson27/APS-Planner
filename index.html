@@ -291,6 +291,62 @@
   @media (max-width: 480px), (max-height: 480px) {
     .help-panel { top: 0; right: 0; bottom: 0; width: 100vw; border-radius: 0; }
   }
+  /* Notifications bell (src/app/notifications.ts): same round button as
+     Help, with a red unread count; its panel drops down from the top bar
+     (full screen on phones). */
+  .notify-btn { position: relative; }
+  .notify-count {
+    position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px;
+    background: #d32f2f; color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center;
+    border: 2px solid var(--chrome); box-sizing: content-box;
+  }
+  .notify-count[hidden] { display: none; }
+  .notify-panel {
+    position: fixed; top: 64px; right: 12px; width: min(380px, calc(100vw - 24px)); max-height: calc(100vh - 80px); z-index: 2600;
+    display: flex; flex-direction: column; background: var(--card); color: var(--text);
+    border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .notify-panel[hidden] { display: none; }
+  .notify-head { display: flex; align-items: center; gap: var(--s-1); padding: var(--s-3) var(--s-2) var(--s-2) var(--s-4-5, 18px); }
+  .notify-head h2 { margin: 0 auto 0 0; font-size: 18px; }
+  .notify-link { border: 0; background: none; color: var(--primary-light); font: inherit; font-size: var(--t-sm); font-weight: 600; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
+  .notify-link:hover:not(:disabled) { background: var(--chrome-hover); }
+  .notify-link:disabled { color: var(--text-light); cursor: default; }
+  .notify-gear { border: 0; background: none; color: var(--text-light); width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
+  .notify-gear:hover, .notify-gear[aria-expanded="true"] { background: var(--chrome-hover); color: var(--text); }
+  .notify-settings { margin: 0 var(--s-3) var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: 12px; display: grid; gap: var(--s-1-5); font-size: var(--t-sm); }
+  .notify-settings legend { font-weight: 700; padding: 0 4px; }
+  .notify-settings label { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+  .notify-settings p { margin: var(--s-1) 0 0; font-size: var(--t-xs); color: var(--text-light); }
+  .notify-list { list-style: none; margin: 0; padding: 0 var(--s-2) var(--s-2); overflow-y: auto; }
+  .notify-item {
+    display: flex; align-items: flex-start; gap: var(--s-2-5, 10px); width: 100%; padding: var(--s-2-5, 10px) var(--s-2);
+    border: 0; border-radius: 10px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .notify-item:hover { background: var(--chrome-hover); }
+  .notify-item:focus-visible { outline: 2px solid var(--primary-light); outline-offset: -2px; }
+  .notify-icon { flex-shrink: 0; margin-top: 1px; color: var(--text-light); }
+  .notify-overdue .notify-icon { color: #c62828; }
+  .notify-mention .notify-icon, .notify-assigned .notify-icon { color: var(--primary-light); }
+  .notify-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
+  .notify-title { font-size: var(--t-sm); }
+  .notify-item.unread .notify-title { font-weight: 700; }
+  .notify-detail { font-size: var(--t-xs); color: var(--text-light); overflow-wrap: anywhere; }
+  .notify-when { font-size: var(--t-2xs); color: var(--text-light); }
+  .notify-unread-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary-light); flex-shrink: 0; margin-top: 6px; }
+  .notify-empty { margin: 0; padding: var(--s-3) var(--s-4-5, 18px) var(--s-5, 20px); font-size: var(--t-sm); color: var(--text-light); line-height: 1.5; }
+  @media (max-width: 480px), (max-height: 480px) {
+    .notify-panel { top: 0; right: 0; bottom: 0; width: 100vw; max-height: none; border-radius: 0; }
+  }
+  /* @mention picker under the comment boxes (src/app/mention-picker.ts). */
+  .mention-picker {
+    position: fixed; z-index: 3000; list-style: none; margin: 0; padding: 4px; min-width: 180px; max-width: 280px;
+    background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.16);
+  }
+  .mention-picker[hidden] { display: none; }
+  .mention-picker li { padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mention-picker li span { color: var(--text-light); font-size: var(--t-xs); }
+  .mention-picker li.active, .mention-picker li:hover { background: var(--chrome-hover); }
   .settings-btn .admin-badge { top: 5px; right: 5px; left: auto; min-width: 0; width: 12px; height: 12px; padding: 0; font-size: 0; border: 2px solid var(--chrome); }
   .account-btn {
     position: relative; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: transparent;
@@ -3813,8 +3869,8 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
     .app-nav-ctl-slot { display: none; flex: 1; min-width: 0; align-items: center; }
     body:has(#panel-calendar.active) #appNavCtlCalendar,
     body:has(#panel-reports.active) #appNavCtlReports { display: flex; }
-    .app-nav-ctl .calendar-toolbar, .app-nav-ctl .rep-toolbar { flex: 1; margin: 0; flex-wrap: nowrap; gap: var(--s-2); }
-    .app-nav-ctl .calendar-toolbar h3 { font-size: 17px; font-weight: 700; margin: 0 var(--s-1); white-space: nowrap; }
+    .app-nav-ctl .calendar-toolbar, .app-nav-ctl .rep-toolbar { flex: 1; min-width: 0; margin: 0; flex-wrap: nowrap; gap: var(--s-2); }
+    .app-nav-ctl .calendar-toolbar h3 { font-size: 17px; font-weight: 700; margin: 0 var(--s-1); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .app-nav-ctl #calFilterBar { margin-left: auto; flex-wrap: nowrap; }
     .app-nav-ctl .cal-view-toggle { margin-left: 0; }
     .app-nav-ctl .rep-period-name { min-width: 0; padding: 0 var(--s-2); white-space: nowrap; }
@@ -4093,6 +4149,7 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
      switchTabMorphed() on desktop and setMobileView() on phones (see
      static-event-wiring.ts). -->
 <aside class="help-panel" id="helpPanel" role="dialog" aria-labelledby="helpTitle" hidden></aside>
+<section class="notify-panel" id="notifyPanel" role="dialog" aria-labelledby="notifyTitle" hidden></section>
 <header class="app-nav" id="appNav">
   <div class="app-nav-left">
     <!-- Gmail's ☰: shows or hides the job list (toggleJobRail()). -->
@@ -4120,6 +4177,9 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   </div>
   <div class="app-nav-right">
     <div class="presence-avatars" id="presenceAvatars"></div>
+    <!-- Notifications (src/app/notifications.ts): comments, @mentions,
+         assignments and due dates on your jobs. -->
+    <button type="button" class="help-btn notify-btn" id="notifyBtn" title="Notifications" aria-label="Notifications" aria-expanded="false" aria-controls="notifyPanel"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg><span class="notify-count" id="notifyCount" hidden></span></button>
     <!-- Help (src/views/help.tsx): how every page works, the Gantt key and
          the new-user tour. -->
     <button type="button" class="help-btn" id="helpBtn" title="Help" aria-label="Help" aria-expanded="false" aria-controls="helpPanel"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6"/><path d="M12 17.2v.1"/></svg></button>

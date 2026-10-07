@@ -28,6 +28,7 @@ import { isPanelActive } from '../utils/ui';
 import { renderMyChecklist } from '../views/checklist';
 import { renderReportsIfActive } from '../views/reports';
 import { renderJobListWhenVisible } from '../views/job-list';
+import { refreshNotifications } from '../app/notifications';
 
 // Ambient globals this file shares verbatim with other src/ files
 // (roomEverConnected, activeProjectId, projects, latestPresenceUsers,
@@ -51,10 +52,12 @@ function handleRoomMessage(msg: any): void {
     const isFirst = !roomEverConnected;
     roomEverConnected = true;
     applyRoomSnapshot(msg.projects || {}, isFirst);
+    refreshNotifications();
     return;
   }
   if (msg.type === 'delta') {
     applyRoomDelta(msg.projects || {});
+    refreshNotifications();
     return;
   }
   if (msg.type === 'presence') {

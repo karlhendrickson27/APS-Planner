@@ -142,6 +142,18 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: 'notifications',
+    title: 'Notifications',
+    body: () => (
+      <ul>
+        <li>The <b>bell</b> in the top bar shows a red number when something needs you: a checklist item assigned to you, being added to a job, a job you're on due tomorrow or overdue, an @mention, or a new comment on one of your jobs.</li>
+        <li>Click one to open that job. <b>Mark all read</b> clears the number.</li>
+        <li>To mention someone, type <b>@</b> in a comment and pick their name.</li>
+        <li>The sliders button in the bell lets you choose which kinds you get. Your read marks and choices follow you to your other devices.</li>
+      </ul>
+    ),
+  },
+  {
     id: 'settings',
     title: 'Settings and your account',
     body: () => (

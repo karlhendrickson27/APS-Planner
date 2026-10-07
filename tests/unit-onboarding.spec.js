@@ -102,11 +102,11 @@ test('findNextCoachmarkIndex: skips a step whose target is missing/hidden, retur
 test('findNextCoachmarkIndex: finds the real next step once its target exists on the page', async ({ page }) => {
   await page.goto(FIXTURE_URL);
   const result = await page.evaluate(() => {
-    // #jobRailToggleBtn is COACHMARK_STEPS[3]'s real target selector (after Help, Settings and Account).
+    // #jobRailToggleBtn is COACHMARK_STEPS[4]'s real target selector (after Notifications, Help, Settings and Account).
     const btn = document.createElement('button');
     btn.id = 'jobRailToggleBtn';
     document.body.appendChild(btn);
-    return findNextCoachmarkIndex(2, 1);
+    return findNextCoachmarkIndex(3, 1);
   });
-  expect(result).toBe(3);
+  expect(result).toBe(4);
 });

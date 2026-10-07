@@ -7,6 +7,7 @@
 // flush-before-switch/fail-closed/scope-restriction guards and the
 // linked-job data model are covered by tests/unit-project.spec.js.
 import { genId, safeJsonParse } from '../utils/id';
+import { noteMyEdit } from './notifications';
 import { showToast } from '../utils/ui';
 import { toBoardColor } from '../utils/color';
 import { hasMinTier } from '../auth/permissions';
@@ -485,6 +486,8 @@ export function saveActiveProject(): void {
   p.header.bgPhoto = localStorage.getItem('gantt_header_bg_photo_v1') || null;
   p.header.boardBgPhoto = localStorage.getItem('gantt_board_bg_photo_v1') || null;
   saveProjects();
+  // Anything this edit made (e.g. assigning yourself) isn't news to you.
+  noteMyEdit();
 }
 
 // Used to confirm() first — a one-click accidental project switch was a

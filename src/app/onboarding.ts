@@ -194,6 +194,7 @@ export function tutorialSlideSkip(): void {
 // Job is projectAdmin+ only) just get skipped for a lower-tier viewer
 // instead of pointing at a hidden button.
 const COACHMARK_STEPS = [
+  { find: ['#notifyBtn'], title: 'Notifications', desc: 'Comments, @mentions, assignments and due dates on your jobs.' },
   { find: ['#helpBtn'], title: 'Help', desc: 'How every page works, what the Gantt colors mean, and this tour again.' },
   { find: ['#settingsBtn'], title: 'Settings', desc: 'Dark mode, the project\'s look and workflow, and export and print.' },
   { find: ['#accountBtn'], title: 'Your account', desc: 'Your password, email, two-step sign-in, and logging out.' },

@@ -22,6 +22,7 @@
 // getChecklistForStageInProject), and the entire "My Checklist" tab
 // (buildMyChecklistRows through setMyChecklistStageAssignee).
 import type { BoardCard, BoardColumn, ChecklistItem, ChecklistSubItem, Job, Phase } from '../core/types';
+import { noteMyEdit } from '../app/notifications';
 import { escapeHtml } from '../utils/html';
 import { genId } from '../utils/id';
 import { findJob, getJobPhases } from '../core/models';
@@ -592,7 +593,7 @@ function resolveMyChecklistCard(projectId: string, cardId: string): { proj: any;
 // covers it; a non-active project has no such live rendering to keep in
 // sync, just its own localStorage + a manual push to the room.
 function persistMyChecklistChange(projectId: string): void {
-  if (projectId === activeProjectId) { saveJobs(); } else { saveProjects(); pushProjectToShared(projectId); }
+  if (projectId === activeProjectId) { saveJobs(); } else { saveProjects(); pushProjectToShared(projectId); noteMyEdit(); }
 }
 
 // Shared resolve→find-items→find-item→mutate→persist→render skeleton

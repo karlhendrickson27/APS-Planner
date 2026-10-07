@@ -4,6 +4,7 @@
 // check in the app should go through, so the tier ordering only needs to
 // be correct in exactly one place.
 import { DISPLAY_NAME_KEY } from './session';
+import { loadNotificationState } from '../app/notifications';
 import { checkMaintenanceStatus } from '../app/maintenance';
 import { refreshAdminNotices } from '../app/admin-notices';
 import { updateAccountButton } from '../app/account-nav';
@@ -67,4 +68,5 @@ export function applyIdentityFromTokenPayload(payload: any): void {
   // still false then, so it deliberately didn't block anyone yet).
   checkMaintenanceStatus();
   refreshAdminNotices();
+  loadNotificationState();
 }

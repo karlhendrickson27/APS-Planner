@@ -41,6 +41,7 @@ import { handleAdminNotices, handleAdminNoticesSeen } from './admin-notices.ts';
 import { handleMaintenanceStatus, handleSetMaintenanceStatus } from './maintenance.ts';
 import { handleAuditExport, handleDataExport, handleDeletionStatus, handleDeletionSchedule, handleDeletionCancel, runDueDeletion } from './compliance.ts';
 import { handleCalendarFeedLink, handleCalendarFeed } from './calendar-feed.ts';
+import { handleNotificationState } from './notifications.ts';
 export { ApsRoom } from './room-do.ts';
 
 // --- WORKER ENTRYPOINTS ---
@@ -219,6 +220,9 @@ export default {
     }
     if (url.pathname === "/data/export" && request.method === "POST") {
       return handleDataExport(request, env, corsHeaders);
+    }
+    if (url.pathname === "/notifications/state" && request.method === "POST") {
+      return handleNotificationState(request, env, corsHeaders);
     }
     if (url.pathname === "/calendar-feed/link" && request.method === "POST") {
       return handleCalendarFeedLink(request, env, corsHeaders);

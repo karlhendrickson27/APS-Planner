@@ -7,7 +7,7 @@
 import type { Job } from '../core/types';
 import { findJob } from '../core/models';
 import { genId } from '../utils/id';
-import { getStoredDisplayName, DISPLAY_NAME_KEY } from '../auth/session';
+import { getStoredDisplayName, getStoredUsername, DISPLAY_NAME_KEY } from '../auth/session';
 import { logActivity } from '../sync/outbound';
 import { renderHomeJobChat } from './home';
 import { renderJobCommentFeedInto, type JobChatItemProps, type JobChatReply } from './job-comment-item';
@@ -119,7 +119,7 @@ export function postJobReply(jobId: string, commentId: string, text: string | fa
   }
 
   if (!Array.isArray(comment.replies)) comment.replies = [];
-  const reply = { id: genId(), author: author, text: trimmed, when: Date.now() };
+  const reply = { id: genId(), author: author, by: getStoredUsername(), text: trimmed, when: Date.now() };
   comment.replies.push(reply);
   saveJobs();
   logActivity('replied to a comment on job "' + job.name + '"');
@@ -172,7 +172,7 @@ export function postJobComment(jobId: string, text: string, important: boolean):
 
   const job = found.job;
   if (!Array.isArray(job.comments)) job.comments = [];
-  const comment = { id: genId(), author: author, text: trimmed, when: Date.now(), important: !!important };
+  const comment = { id: genId(), author: author, by: getStoredUsername(), text: trimmed, when: Date.now(), important: !!important };
   (job.comments as any[]).push(comment);
   saveJobs();
   logActivity('commented on job "' + job.name + '"' + (important ? ' (marked important)' : ''));
