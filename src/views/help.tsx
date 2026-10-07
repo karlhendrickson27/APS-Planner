@@ -27,6 +27,7 @@ const SECTIONS: Section[] = [
         <p>A <b>job</b> is one project you track from bid to invoiced. Its schedule is made of <b>tasks</b>, one per stage, and a big job can be split into <b>phases</b> that move along on their own.</p>
         <p>The <b>stages</b> are the columns on the Board (Bid, Scheduled, Active…). As a job's dates pass, its card moves along the Board by itself.</p>
         <p>Everything saves as you go and shows up for the rest of the team right away. The faces at the top right are who else is on right now.</p>
+        <p><b>On a phone</b>, add TeamSync to your home screen to use it like an app. iPhone: in Safari tap Share, then <b>Add to Home Screen</b>. Android: in Chrome tap ⋮, then <b>Install app</b>. Once it has opened on a phone, it opens with no signal too and shows the last schedule it saw.</p>
       </>
     ),
   },

@@ -15,6 +15,7 @@ import { escapeHtml } from './utils/html';
 import { createAutosaveController } from './utils/autosave';
 import { openModal, closeModal, showToast, moveTooltip, hideTooltip, toggleMsDropdown, closeAllMsDropdowns, msSetAll, msDropdownLabelText } from './utils/ui';
 import { checkForNewerVersion } from './app/version-check';
+import './app/offline';
 import { checkMaintenanceStatus, applyMaintenanceStatus, toggleMaintenancePanel, setMaintenanceMode } from './app/maintenance';
 import { reportClientError } from './app/error-reporting';
 import { positionSettingsMenu, toggleSettingsMenu, toggleAccountMenu, closeSettingsMenu, armSettingsMenuAutoClose, cancelSettingsMenuAutoClose, showSettingsTab } from './app/settings-menu';

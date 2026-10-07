@@ -71,7 +71,7 @@ jobs:
       - name: Stage the site
         run: |
           mkdir -p _site
-          cp index.html version.txt _site/
+          cp index.html version.txt sw.js manifest.webmanifest _site/
           cp -r assets _site/
           cp -r dist _site/
           cp -r status _site/
