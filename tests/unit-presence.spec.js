@@ -35,6 +35,28 @@ test('renderPresenceAvatars: excludes the current session, includes everyone els
   ]);
 });
 
+test('renderPresenceAvatars: hides my other tabs and shows one bubble per person', async ({ page }) => {
+  await page.goto(FIXTURE_URL);
+  const result = await page.evaluate(() => {
+    document.body.innerHTML = '<div id="presenceAvatars"></div>';
+    myPresenceSessionId = 'me-1';
+    projects = { 'proj-1': { name: 'Riverside Remodel' } };
+    latestPresenceUsers = [
+      { sessionId: 'me-1', displayName: 'Karl A', username: 'karl' },
+      { sessionId: 'me-2', displayName: 'Karl A', username: 'karl', view: 'gantt' }, // my other tab
+      { sessionId: 'me-3', displayName: 'Karl A', username: 'karl', view: 'home' },  // my phone
+      { sessionId: 'jane-1', displayName: 'Jane Doe', username: 'jane', projectId: 'proj-1', view: 'board' },
+      { sessionId: 'jane-2', displayName: 'Jane Doe', username: 'jane', projectId: 'proj-1', view: 'gantt' },
+      { sessionId: 'jane-3', displayName: 'Jane Doe', username: 'jane', projectId: 'proj-1', view: 'board' },
+    ];
+    renderPresenceAvatars();
+    return Array.from(document.querySelectorAll('.presence-avatar')).map((el) => ({ text: el.textContent, title: el.title }));
+  });
+  expect(result).toEqual([
+    { text: 'JD', title: 'Jane Doe — Board — Riverside Remodel, Gantt Chart — Riverside Remodel' },
+  ]);
+});
+
 test('presenceInitials: single-word names use the first two letters, multi-word names use first+last initial', async ({ page }) => {
   await page.goto(FIXTURE_URL);
   const result = await page.evaluate(() => ({

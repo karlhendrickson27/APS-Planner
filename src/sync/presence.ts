@@ -11,6 +11,7 @@
 // active-project pointer, and the shared project-data map) and are
 // referenced below as ambient globals.
 import { escapeHtml } from '../utils/html';
+import { getStoredUsername } from '../auth/session';
 
 // Ambient globals this file shares verbatim with other src/ files
 // (roomSocket, activeProjectId, latestPresenceUsers, projects) are
@@ -73,17 +74,34 @@ function presenceAnimDelay(key: string | null | undefined): number {
   return (hash % 26) / 10; // 0.0s-2.5s
 }
 
+// One bubble per OTHER person. Every open tab or device is its own
+// connection, so the same account can appear several times in the list:
+// all of the viewer's own connections are left out (not just this tab),
+// and someone with several tabs open shows once, with each place they're
+// looking listed in the tooltip.
 function renderPresenceAvatars(): void {
   const el = document.getElementById('presenceAvatars');
   if (!el) return;
-  const others = latestPresenceUsers.filter(function (u) { return u.sessionId !== myPresenceSessionId; });
-  el.innerHTML = others.map(function (u) {
-    const name = u.displayName || u.username || 'Someone';
+  const mine = latestPresenceUsers.find(function (u) { return u.sessionId === myPresenceSessionId; });
+  const myUsername = (mine && mine.username) || getStoredUsername();
+  const people: { u: PresenceUser; places: string[] }[] = [];
+  latestPresenceUsers.forEach(function (u) {
+    if (u.sessionId === myPresenceSessionId || (myUsername && u.username === myUsername)) return;
     const proj = u.projectId && projects[u.projectId] ? projects[u.projectId].name : '';
     const view = u.view ? (PRESENCE_VIEW_LABELS[u.view] || u.view) : '';
     const whereLabel = [view, proj].filter(Boolean).join(' — ');
-    const title = whereLabel ? (name + ' — ' + whereLabel) : name;
-    const delayKey = u.sessionId || u.username || name;
+    const existing = u.username ? people.find(function (p) { return p.u.username === u.username; }) : undefined;
+    if (existing) {
+      if (whereLabel && existing.places.indexOf(whereLabel) === -1) existing.places.push(whereLabel);
+      return;
+    }
+    people.push({ u: u, places: whereLabel ? [whereLabel] : [] });
+  });
+  el.innerHTML = people.map(function (p) {
+    const u = p.u;
+    const name = u.displayName || u.username || 'Someone';
+    const title = p.places.length ? (name + ' — ' + p.places.join(', ')) : name;
+    const delayKey = u.username || u.sessionId || name;
     return '<span class="presence-avatar" style="background:' + presenceAvatarColor(u.username || name) + ';animation-delay:' + presenceAnimDelay(delayKey) + 's;" title="' + escapeHtml(title) + '">' + escapeHtml(presenceInitials(name)) + '</span>';
   }).join('');
 }
