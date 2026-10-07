@@ -5032,9 +5032,11 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
 // the exact scenario that caused sync to look broken earlier: an old tab
 // running outdated merge/autosave logic against teammates on the current
 // version. Format is free-form; date+sequence keeps it human-scannable.
-// IMPORTANT: version.txt (repo root) must be bumped to this same value on
-// every deploy — checkForNewerVersion() compares against that file, not
-// this constant, to avoid re-fetching the whole page just to check.
+// The deploy (.github/workflows/deploy.yml, "Stamp the version") replaces
+// this and version.txt with <date>.<commit> on every build, and adds the
+// same value to the bundle URL, so nobody bumps it by hand any more.
+// checkForNewerVersion() compares against version.txt, not this constant,
+// to avoid re-fetching the whole page just to check.
 const APP_VERSION = '2026-09-17.16';
 
 // DEFAULT_JOBS moved into src/app/seed-data.ts, COLOR_PRESETS into

@@ -76,6 +76,19 @@ jobs:
           cp -r dist _site/
           cp -r status _site/
           cp -r privacy _site/
+      # Stamp this build into the page. The bundle URL gets ?v=<version>, so a
+      # reload always fetches the new code instead of the copy Pages lets
+      # browsers cache for 10 minutes. APP_VERSION and version.txt get the
+      # same value, so the "newer version" banner (src/app/version-check.ts)
+      # works without anyone bumping a number by hand.
+      - name: Stamp the version
+        run: |
+          V="$(date -u +%Y-%m-%d).${GITHUB_SHA::7}"
+          sed -i "s#src=\"dist/app.bundle.js\"#src=\"dist/app.bundle.js?v=$V\"#" _site/index.html
+          sed -i "s#^const APP_VERSION = .*;#const APP_VERSION = '$V';#" _site/index.html
+          echo "$V" > _site/version.txt
+          grep -q "app.bundle.js?v=$V" _site/index.html
+          grep -q "const APP_VERSION = '$V';" _site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
