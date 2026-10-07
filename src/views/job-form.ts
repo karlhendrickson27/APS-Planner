@@ -43,6 +43,7 @@ declare global {
   // eslint-disable-next-line no-var
   var jmDraftAttachments: unknown[];
   function getOtherFixedProjectId(projectId: string | null): string | null;
+  function getOtherProjectIds(projectId: string | null): string[];
   function isLinkEnabledLocally(jobId: string): boolean;
   function linkJobs(jobA: Job, projectAId: string | null, jobBId: string, projectBId: string): boolean;
   function setJobLinkEnabled(jobId: string, projectId: string | null, enabled: boolean): void;
@@ -624,6 +625,8 @@ export function deleteSubPhaseUI(subId: string): void {
 // Only shown once the job actually exists (mirrors the phase strip's own
 // "not for the blank Add-New-Job draft" rule — nothing to link yet).
 let jobLinkPickerOpen = false;
+// Which other project the link picker is showing jobs from.
+let jobLinkPickerProjectId: string | null = null;
 
 export function renderJobLinkSection(job: Job | null): void {
   const section = document.getElementById('jobLinkSection');
@@ -647,20 +650,29 @@ export function renderJobLinkSection(job: Job | null): void {
     return;
   }
 
-  const otherProjectId = getOtherFixedProjectId(activeProjectId);
-  const otherProj = otherProjectId ? projects[otherProjectId] : null;
-  const otherProjName = otherProj ? otherProj.name : 'other project';
+  // Any other (not archived) project. With just one, the button names it.
+  const otherIds = getOtherProjectIds(activeProjectId);
+  if (!otherIds.length) { section.style.display = 'none'; return; }
+  if (!jobLinkPickerProjectId || otherIds.indexOf(jobLinkPickerProjectId) === -1) jobLinkPickerProjectId = otherIds[0];
+  const otherProjectId = jobLinkPickerProjectId;
+  const otherProj = projects[otherProjectId];
 
   if (!jobLinkPickerOpen) {
-    body.innerHTML = '<button type="button" class="job-phase-strip-btn" data-min-tier="projectAdmin" onclick="openJobLinkPickerUI()">+ Link to ' + escapeHtml(otherProjName) + ' job</button>';
+    const label = otherIds.length === 1 ? '+ Link to ' + escapeHtml(otherProj.name) + ' job' : '+ Link to a job in another project';
+    body.innerHTML = '<button type="button" class="job-phase-strip-btn" data-min-tier="projectAdmin" onclick="openJobLinkPickerUI()">' + label + '</button>';
     applyPermissionGating();
     return;
   }
 
+  const projectSelect = otherIds.length > 1
+    ? '<select id="jobLinkProjectSelect" aria-label="Project" onchange="pickJobLinkProjectUI(this.value)">' + otherIds.map(function (id) {
+        return '<option value="' + escapeHtml(id) + '"' + (id === otherProjectId ? ' selected' : '') + '>' + escapeHtml(projects[id].name) + '</option>';
+      }).join('') + '</select>'
+    : '';
   const otherJobs = ((otherProj && otherProj.jobs) || []).filter(function (j: Job) { return !j.archived; });
   const options = otherJobs.map(function (j: Job) { return '<option value="' + j.id + '">' + escapeHtml(j.name) + '</option>'; }).join('');
-  body.innerHTML = '<div class="job-link-picker-row">' +
-    '<select id="jobLinkPickerSelect">' + (options || '<option value="">No jobs available</option>') + '</select>' +
+  body.innerHTML = '<div class="job-link-picker-row">' + projectSelect +
+    '<select id="jobLinkPickerSelect" aria-label="Job">' + (options || '<option value="">No jobs available</option>') + '</select>' +
     '<button type="button" class="btn btn-primary" data-min-tier="projectAdmin" style="padding: var(--s-1-25) var(--s-3);font-size: var(--t-xs);" onclick="confirmJobLinkUI(\'' + otherProjectId + '\')"' + (otherJobs.length ? '' : ' disabled') + '>Link</button>' +
     '<button type="button" class="btn btn-secondary" style="padding: var(--s-1-25) var(--s-3);font-size: var(--t-xs);" onclick="cancelJobLinkPickerUI()">Cancel</button>' +
     '</div>';
@@ -669,6 +681,12 @@ export function renderJobLinkSection(job: Job | null): void {
 
 export function openJobLinkPickerUI(): void {
   jobLinkPickerOpen = true;
+  const found = editingJobId && findJob(editingJobId);
+  if (found) renderJobLinkSection(found.job);
+}
+
+export function pickJobLinkProjectUI(projectId: string): void {
+  jobLinkPickerProjectId = projectId;
   const found = editingJobId && findJob(editingJobId);
   if (found) renderJobLinkSection(found.job);
 }

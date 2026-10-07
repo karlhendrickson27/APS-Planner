@@ -391,6 +391,12 @@ export class ApsRoom {
     // the other project — see the client's linkJobs(), also in
     // src/app/project.ts, which deliberately writes to BOTH fixed projects
     // for exactly this feature).
+    // Only an admin can start a new project (any message naming a project
+    // the room doesn't have yet would otherwise create it).
+    if (msg && typeof msg.projectId === 'string' && msg.type !== 'removeProject' && attachment && attachment.role !== 'admin' && roomState.projects && Object.keys(roomState.projects).length && !roomState.projects[msg.projectId]) {
+      ws.send(JSON.stringify({ type: 'error', msgId: msg.msgId, message: 'Forbidden: only an admin can add a project' }));
+      return;
+    }
     if (msg && msg.projectId && attachment && attachment.role !== 'admin' && attachment.assignedProjectId && msg.projectId !== attachment.assignedProjectId) {
       ws.send(JSON.stringify({ type: 'error', msgId: msg.msgId, message: 'Forbidden: outside your assigned project' }));
       return;

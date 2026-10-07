@@ -151,8 +151,8 @@ export function resetThemeDefault(): void {
 // base64-inflation problem and the Durable Object's single-key
 // room-storage size limit entirely — the browser just requests and
 // caches it like any other website asset, full resolution, no size cap.
-// Keyed by FIXED_PROJECT_NAMES (the two permanent projects this app
-// already treats as fixed). Originally Board-only; extended to every
+// Keyed by the original two projects' names, as the fallback when a
+// project has no header.logo of its own (projectLogoUrl() below). Originally Board-only; extended to every
 // other view's own panel per explicit request. bludorn-board-bg.jpg is
 // the full source logo (icon + "BLUDORN BUILDERS" lettering), centered
 // on a white square canvas the same way APS's own asset is composed, so
@@ -169,10 +169,19 @@ const STATIC_PROJECT_BG_BY_NAME: Record<string, string> = {
 // IT alone would leave the wider margins on either side untouched).
 // Home is left out on purpose: its widgets sit straight on the page
 // chrome, each one its own window, not inside a panel (Karl, 2026-09-29).
+// A project's board logo: its own (header.logo, set in the Projects
+// window, src/app/projects-admin.ts; '' means none on purpose), else the
+// bundled image for the two original projects' names.
+export function projectLogoUrl(proj: any): string {
+  if (!proj) return '';
+  const own = proj.header && proj.header.logo;
+  if (typeof own === 'string') return /^(data:image\/(png|jpeg|webp);base64,|assets\/)/.test(own) ? own : '';
+  return STATIC_PROJECT_BG_BY_NAME[proj.name] || '';
+}
 const STATIC_BG_PANEL_IDS = ['panel-checklist', 'panel-calendar', 'panel-gantt'];
 export function applyProjectBgVisual(): void {
   const proj = getActiveProject();
-  const staticBg = proj && STATIC_PROJECT_BG_BY_NAME[proj.name];
+  const staticBg = projectLogoUrl(proj);
   const dark = document.body.classList.contains('dark-mode');
   const overlay = dark ? 'rgba(10,12,16,0.6)' : 'rgba(255,255,255,0.55)';
   // Board's own exact technique (flat opacity overlay, cover) — an

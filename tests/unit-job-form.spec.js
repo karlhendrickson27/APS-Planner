@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { APP_URL, seedSession, mockRoomWebSocket } = require('./helpers');
+const { APP_URL, seedSession, mockRoomWebSocket, addSecondProject } = require('./helpers');
 
 // Job Manager's phase/sub-phase editing, autosave, and linked-job UI
 // (src/views/job-form.ts). Two real, already-fixed production bugs live
@@ -216,6 +216,7 @@ test('linked job UI: opening the picker, linking to a job in the other project, 
   await mockRoomWebSocket(page);
   await page.goto(APP_URL);
   await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+  await addSecondProject(page);
 
   const setup = await page.evaluate(() => {
     const [myId, otherId] = Object.keys(projects);

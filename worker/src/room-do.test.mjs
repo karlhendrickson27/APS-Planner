@@ -205,3 +205,21 @@ test('fetch /internal/import rejects a body that is not { projects: {...} }', as
   }));
   assert.equal(res.status, 400);
 });
+
+// ── Projects (roadmap A1): only an admin can add one ──
+
+test('a non-admin cannot start a new project once the room has projects; an admin can', async () => {
+  const editorWs = makeFakeWs({ username: 'e', role: 'editor', assignedProjectId: null });
+  const adminWs = makeFakeWs({ username: 'a', role: 'admin', assignedProjectId: null });
+  const state = makeFakeState([editorWs, adminWs]);
+  const room = new ApsRoom(state, {});
+  await room.webSocketMessage(editorWs, JSON.stringify({ type: 'upsertJob', projectId: 'p1', job: { id: 'job-1', updatedAt: 1 }, msgId: 1 }));
+  assert.ok((await storedRoom(state)).projects.p1, 'the very first project of an empty room can still be made');
+
+  await room.webSocketMessage(editorWs, JSON.stringify({ type: 'upsertJob', projectId: 'p2', job: { id: 'job-2', updatedAt: 1 }, msgId: 2 }));
+  assert.match(editorWs._sent.find(m => m.msgId === 2).message, /only an admin can add a project/);
+  assert.equal((await storedRoom(state)).projects.p2, undefined);
+
+  await room.webSocketMessage(adminWs, JSON.stringify({ type: 'upsertProjectBatch', projectId: 'p2', name: 'Third Co', jobs: [], boardCards: [], calendarEvents: [], header: { title: 'Third Co', subtitle: '', theme: '#3949ab' }, msgId: 3 }));
+  assert.equal((await storedRoom(state)).projects.p2.name, 'Third Co');
+});

@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { APP_URL, seedSession, mockRoomWebSocket } = require('./helpers');
+const { APP_URL, seedSession, mockRoomWebSocket, addSecondProject } = require('./helpers');
 
 // Project management (src/app/project.ts) — switchProject() (the single
 // highest-blast-radius function in the app: it touches every view's own
@@ -15,6 +15,7 @@ test('switchProject: switches active project data, and flushes a pending edit on
   await mockRoomWebSocket(page);
   await page.goto(APP_URL);
   await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+  await addSecondProject(page);
 
   const setup = await page.evaluate(() => {
     const [firstId, secondId] = Object.keys(projects);
@@ -52,6 +53,7 @@ test('switchProject: fails closed (no switch, a toast instead) while roleConfirm
   await mockRoomWebSocket(page);
   await page.goto(APP_URL);
   await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+  await addSecondProject(page);
 
   const result = await page.evaluate(() => {
     const [firstId, secondId] = Object.keys(projects);
@@ -91,6 +93,7 @@ test('toggleProject: switches immediately with no confirmation, cycling to the o
   await mockRoomWebSocket(page);
   await page.goto(APP_URL);
   await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+  await addSecondProject(page);
 
   let dialogCount = 0;
   page.on('dialog', (d) => { dialogCount++; d.dismiss(); });

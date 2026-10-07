@@ -48,4 +48,24 @@ async function mockRoomWebSocket(page) {
   });
 }
 
-module.exports = { APP_URL, WORKER_ORIGIN, fakeSessionToken, seedSession, mockRoomWebSocket };
+// A brand-new (empty) room starts with ONE project; tests about switching
+// or linking between projects add a second one here, the way the app
+// used to fabricate two (same starter jobs). Returns its id; the active
+// project doesn't change.
+async function addSecondProject(page, name = 'Second Co') {
+  return page.evaluate((projectName) => {
+    const id = 'project-test-' + genId();
+    projects[id] = {
+      id, name: projectName,
+      jobs: JSON.parse(JSON.stringify(projects[activeProjectId].jobs)),
+      boardColumns: JSON.parse(JSON.stringify(DEFAULT_BOARD_COLUMNS)),
+      boardCards: [], calendarEvents: [], deletedIds: {}, fieldOptions: {},
+      header: { title: projectName, subtitle: '', theme: '#3949ab', bgPhoto: null, boardBgPhoto: null },
+    };
+    saveProjects();
+    updateProjectToggle();
+    return id;
+  }, name);
+}
+
+module.exports = { APP_URL, WORKER_ORIGIN, fakeSessionToken, seedSession, mockRoomWebSocket, addSecondProject };

@@ -257,7 +257,13 @@ async function setupRoomSync(): Promise<void> {
   }
 }
 
+// Connected and caught up (used to refuse "New project" while offline).
+function isSyncLive(): boolean {
+  return roomEverConnected && syncState === 'ok' && !syncOffline;
+}
+
 export {
+  isSyncLive,
   initSyncIndicator,
   setSyncIndicator,
   refreshSyncIndicator,

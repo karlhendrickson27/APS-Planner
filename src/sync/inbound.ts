@@ -19,7 +19,7 @@ import { renderGantt, isGanttReorderAnimating, GANTT_REORDER_MS } from '../views
 import { renderBoard } from '../views/board';
 import { renderCalendar, ensureCalendarEventIds } from '../views/calendar';
 import { genId } from '../utils/id';
-import { DEFAULT_THEME_COLOR } from '../app/theme';
+import { DEFAULT_THEME_COLOR, applyProjectBgVisual } from '../app/theme';
 import { ensureCardIds, ensureJobAndTaskIds } from '../core/jobs';
 import { Job } from '../core/types';
 import { enforceFixedProjectSet } from '../app/project';
@@ -43,6 +43,17 @@ declare global {
   function hideFreshLoadOverlay(): void;
   function updateJobCount(): void;
   function refreshArchivedJobsListIfOpen(): void;
+}
+
+// A project's board logo and archived flag (Projects window,
+// src/app/projects-admin.ts) ride in its header. Returns true when either
+// changed, so the project list and the logo get redrawn.
+function copyLogoAndArchived(local: any, remoteHeader: any): boolean {
+  let changed = false;
+  if (typeof remoteHeader.logo === 'string' && remoteHeader.logo !== local.header.logo) { local.header.logo = remoteHeader.logo; changed = true; }
+  if (typeof remoteHeader.archived === 'boolean' && remoteHeader.archived !== !!local.header.archived) { local.header.archived = remoteHeader.archived; changed = true; }
+  if (changed && activeProjectId && projects[activeProjectId] === local) applyProjectBgVisual();
+  return changed;
 }
 
 function handleRoomMessage(msg: any): void {
@@ -375,6 +386,7 @@ function applyRoomSnapshot(remoteProjects: Record<string, any>, isFirstSnapshot:
         if (typeof remoteHeader.title === 'string') local.header.title = remoteHeader.title;
         if (typeof remoteHeader.subtitle === 'string') local.header.subtitle = remoteHeader.subtitle;
         if (remoteHeader.theme) local.header.theme = remoteHeader.theme;
+        if (copyLogoAndArchived(local, remoteHeader)) listChanged = true;
       }
 
       // ── activity log — plain array now, no LiveList wrapping to unwrap ──
@@ -603,6 +615,7 @@ function applyRoomDelta(deltaProjects: Record<string, any>): void {
       if (typeof d.header.title === 'string') local.header.title = d.header.title;
       if (typeof d.header.subtitle === 'string') local.header.subtitle = d.header.subtitle;
       if (d.header.theme) local.header.theme = d.header.theme;
+      if (copyLogoAndArchived(local, d.header)) listChanged = true;
       changed = true;
     }
     if (Array.isArray(d.activityLog)) { local.activityLog = d.activityLog; logChanged = true; }

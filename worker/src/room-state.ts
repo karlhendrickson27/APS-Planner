@@ -365,6 +365,28 @@ export interface UpsertProjectBatchMessage {
 // setHeader's baseFieldRevision) — a deliberate, known, low-priority gap
 // carried over from the pre-migration behavior rather than something
 // newly introduced.
+// A project's header also holds its board logo (header.logo: an uploaded
+// image as a data: URL, an assets/ path, or '' for none) and whether it's
+// archived (header.archived). The logo is drawn as a CSS background, so
+// only those shapes are accepted.
+const LOGO_RE = /^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|assets\/[A-Za-z0-9._\-/]+)$/;
+const MAX_LOGO_LEN = 700000;
+export function isSafeHeader(header: Record<string, unknown>): boolean {
+  if ('logo' in header && header.logo !== '' && (typeof header.logo !== 'string' || header.logo.length > MAX_LOGO_LEN || !LOGO_RE.test(header.logo))) return false;
+  if ('archived' in header && typeof header.archived !== 'boolean') return false;
+  return true;
+}
+// Batch upserts replace the header whole, and older app versions only send
+// title/subtitle/theme, so a logo or archived flag the message doesn't
+// mention is kept rather than wiped.
+export function withKeptHeaderFields(incoming: Record<string, unknown>, existing: Record<string, unknown> | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...incoming };
+  ['logo', 'archived'].forEach(function (k) {
+    if (!(k in out) && existing && k in existing) out[k] = existing[k];
+  });
+  return out;
+}
+
 export function handleUpsertProjectBatch(project: Project, msg: UpsertProjectBatchMessage, attachment?: Attachment | null): HandlerResult {
   let next = project;
   let changed = false;
@@ -418,9 +440,9 @@ export function handleUpsertProjectBatch(project: Project, msg: UpsertProjectBat
     changed = true;
   });
 
-  if (msg.header && typeof msg.header === 'object') {
+  if (msg.header && typeof msg.header === 'object' && isSafeHeader(msg.header)) {
     ensureCloned();
-    next.header = msg.header;
+    next.header = withKeptHeaderFields(msg.header, next.header);
     changed = true;
   }
 
@@ -515,6 +537,9 @@ export function handleSetWholeField(project: Project, msg: { baseFieldRevision?:
   }
   if (SET_WHOLE_FIELD_OBJECT_FIELDS.indexOf(fieldName) !== -1 && !isPlainObject(msg.value)) {
     return { project, changed: false, error: 'setWholeField: ' + fieldName + ' must be a plain object' };
+  }
+  if (fieldName === 'header' && !isSafeHeader(msg.value as Record<string, unknown>)) {
+    return { project, changed: false, error: 'setWholeField: header has an invalid logo or archived value' };
   }
   // boardColumns/workflowItems render their id/color unescaped in every
   // Kanban view (col-swatch style="background:...", changeColumnColor()

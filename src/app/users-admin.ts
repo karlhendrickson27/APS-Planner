@@ -108,7 +108,9 @@ export function populateUserFormProjectSelect(selectedId: string): void {
   const sel = document.getElementById('userFormProject') as HTMLSelectElement;
   const options = ['<option value="">All projects (unrestricted)</option>'];
   Object.keys(projects).forEach(function(id) {
-    options.push('<option value="' + escapeHtml(id) + '"' + (id === selectedId ? ' selected' : '') + '>' + escapeHtml(projects[id].name) + '</option>');
+    const archived = projects[id].header && projects[id].header.archived;
+    if (archived && id !== selectedId) return;   // archived projects aren't offered, unless already picked
+    options.push('<option value="' + escapeHtml(id) + '"' + (id === selectedId ? ' selected' : '') + '>' + escapeHtml(projects[id].name) + (archived ? ' (archived)' : '') + '</option>');
   });
   sel.innerHTML = options.join('');
 }

@@ -160,6 +160,7 @@ const SECTIONS: Section[] = [
       <ul>
         <li><b>⚙ Settings</b>: dark mode, export to a spreadsheet, print or save as PDF, and add the schedule to your own calendar. Project admins also set the theme color and workflow items, and see the activity log.</li>
         <li><b>Your initials</b>: change your password or email, turn on two-step sign-in, switch project, and log out.</li>
+        <li><b>Projects</b> (under your initials): pick a project to switch to it. Admins also add projects (copying this one's stages and lists if you like), rename them, give each its own logo, and archive ones you're done with. Archiving keeps everything; restore it any time.</li>
       </ul>
     ),
   },

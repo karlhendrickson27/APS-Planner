@@ -428,3 +428,31 @@ test('removeProject is a no-op for a project that does not exist', () => {
   assert.equal(result.changed, false);
   assert.equal(result.state, state);
 });
+
+// ── Project header: logo + archived (roadmap A1) ──
+
+test('isSafeHeader accepts image data URLs, assets paths and empty logos, and rejects anything else', async () => {
+  const { isSafeHeader } = await import('./room-state.ts');
+  assert.equal(isSafeHeader({ title: 'x' }), true);
+  assert.equal(isSafeHeader({ logo: '' }), true);
+  assert.equal(isSafeHeader({ logo: 'assets/aps-board-bg.jpg' }), true);
+  assert.equal(isSafeHeader({ logo: 'data:image/png;base64,iVBORw0KGgo=' }), true);
+  assert.equal(isSafeHeader({ logo: 'data:image/png;base64,abc") ; background:url(x' }), false);
+  assert.equal(isSafeHeader({ logo: 'https://evil.example/x.png' }), false);
+  assert.equal(isSafeHeader({ logo: 'data:image/svg+xml;base64,PHN2Zz4=' }), false);
+  assert.equal(isSafeHeader({ archived: 'yes' }), false);
+  assert.equal(isSafeHeader({ archived: true }), true);
+});
+
+test('a batch upsert keeps the stored logo and archived flag when its header leaves them out', async () => {
+  const { handleUpsertProjectBatch, blankProject } = await import('./room-state.ts');
+  const p = blankProject('Co');
+  p.header = { title: 'Co', subtitle: '', theme: '#111', logo: 'assets/a.jpg', archived: true };
+  const r = handleUpsertProjectBatch(p, { header: { title: 'Co 2', subtitle: '', theme: '#222' } });
+  assert.deepEqual(r.project.header, { title: 'Co 2', subtitle: '', theme: '#222', logo: 'assets/a.jpg', archived: true });
+  const r2 = handleUpsertProjectBatch(p, { header: { title: 'Co', subtitle: '', theme: '#111', logo: '', archived: false } });
+  assert.equal(r2.project.header.logo, '');
+  assert.equal(r2.project.header.archived, false);
+  const r3 = handleUpsertProjectBatch(p, { header: { title: 'Co', logo: 'javascript:x' } });
+  assert.equal(r3.changed, false, 'an unsafe header is ignored');
+});

@@ -16,6 +16,7 @@ import { createAutosaveController } from './utils/autosave';
 import { openModal, closeModal, showToast, moveTooltip, hideTooltip, toggleMsDropdown, closeAllMsDropdowns, msSetAll, msDropdownLabelText } from './utils/ui';
 import { checkForNewerVersion } from './app/version-check';
 import './app/offline';
+import { createProject, setProjectArchived, renameProject, openProjectsModal } from './app/projects-admin';
 import { checkMaintenanceStatus, applyMaintenanceStatus, toggleMaintenancePanel, setMaintenanceMode } from './app/maintenance';
 import { reportClientError } from './app/error-reporting';
 import { positionSettingsMenu, toggleSettingsMenu, toggleAccountMenu, closeSettingsMenu, armSettingsMenuAutoClose, cancelSettingsMenuAutoClose, showSettingsTab } from './app/settings-menu';
@@ -54,7 +55,7 @@ import {
   slugifyFixedProjectName, enforceFixedProjectSet, loadActiveProjectData, saveActiveProject, toggleProject,
   updateProjectToggle, renderAll, applyPermissionGating, saveJobs, saveBoardColumns,
   saveWorkflowItems, saveBoardCards, saveCalendarEvents, saveFieldOptions, saveHeader, loadLinkEnabledPref,
-  saveLinkEnabledPref, isLinkEnabledLocally, setLinkEnabledLocally, getOtherFixedProjectId, getLinkedReferenceJobs,
+  saveLinkEnabledPref, isLinkEnabledLocally, setLinkEnabledLocally, getOtherFixedProjectId, getOtherProjectIds, getLinkedReferenceJobs,
   jumpToLinkedJobReference, linkJobs, setJobLinkEnabled, unlinkJobById,
 } from './app/project';
 import { mergeTombstones, showFreshLoadOverlay, hideFreshLoadOverlay, init, boot } from './app/boot';
@@ -158,7 +159,7 @@ import {
   renderJobFormForPhase, selectJobPhase, splitJobIntoPhasesUI, addJobPhaseUI, renameJobPhaseUI,
   deleteJobPhaseUI, selectJobSubPhase, getCurrentEditingPhase, splitPhaseIntoSubPhasesUI,
   addPhaseSubUnitUI, renameSubPhaseUI, deleteSubPhaseUI, renderJobLinkSection, openJobLinkPickerUI,
-  cancelJobLinkPickerUI, confirmJobLinkUI, toggleJobLinkEnabledUI, unlinkJobUI, openJobDrawer,
+  cancelJobLinkPickerUI, pickJobLinkProjectUI, confirmJobLinkUI, toggleJobLinkEnabledUI, unlinkJobUI, openJobDrawer,
   closeJobDrawer, addNewJob, editJob, refreshJobFormIfOpen, scheduleAutoSaveJobForm,
   flushAutoSaveJobForm, cancelPendingJobAutosave, setJobNameHint, showTaskRowWarnings,
   autoSaveJobForm, initJobFormAutosaveListeners, cancelEdit,
@@ -417,6 +418,10 @@ declare global {
     loadActiveProjectData: typeof loadActiveProjectData;
     saveActiveProject: typeof saveActiveProject;
     toggleProject: typeof toggleProject;
+    createProject: typeof createProject;
+    setProjectArchived: typeof setProjectArchived;
+    renameProject: typeof renameProject;
+    openProjectsModal: typeof openProjectsModal;
     updateProjectToggle: typeof updateProjectToggle;
     renderAll: typeof renderAll;
     applyPermissionGating: typeof applyPermissionGating;
@@ -432,6 +437,8 @@ declare global {
     isLinkEnabledLocally: typeof isLinkEnabledLocally;
     setLinkEnabledLocally: typeof setLinkEnabledLocally;
     getOtherFixedProjectId: typeof getOtherFixedProjectId;
+    getOtherProjectIds: typeof getOtherProjectIds;
+    pickJobLinkProjectUI: typeof pickJobLinkProjectUI;
     getLinkedReferenceJobs: typeof getLinkedReferenceJobs;
     jumpToLinkedJobReference: typeof jumpToLinkedJobReference;
     linkJobs: typeof linkJobs;
@@ -1002,6 +1009,10 @@ window.enforceFixedProjectSet = enforceFixedProjectSet;
 window.loadActiveProjectData = loadActiveProjectData;
 window.saveActiveProject = saveActiveProject;
 window.toggleProject = toggleProject;
+window.createProject = createProject;
+window.setProjectArchived = setProjectArchived;
+window.renameProject = renameProject;
+window.openProjectsModal = openProjectsModal;
 window.updateProjectToggle = updateProjectToggle;
 window.renderAll = renderAll;
 window.applyPermissionGating = applyPermissionGating;
@@ -1017,6 +1028,8 @@ window.saveLinkEnabledPref = saveLinkEnabledPref;
 window.isLinkEnabledLocally = isLinkEnabledLocally;
 window.setLinkEnabledLocally = setLinkEnabledLocally;
 window.getOtherFixedProjectId = getOtherFixedProjectId;
+window.getOtherProjectIds = getOtherProjectIds;
+window.pickJobLinkProjectUI = pickJobLinkProjectUI;
 window.getLinkedReferenceJobs = getLinkedReferenceJobs;
 window.jumpToLinkedJobReference = jumpToLinkedJobReference;
 window.linkJobs = linkJobs;

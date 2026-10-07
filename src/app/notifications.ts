@@ -103,6 +103,7 @@ export function collectNotificationFacts(allProjects: Record<string, any>, me: M
 
   projectIds.forEach((pid) => {
     const proj = allProjects[pid] || {};
+    if (proj.header && proj.header.archived) return;   // archived project (src/app/projects-admin.ts)
     const cards: any[] = Array.isArray(proj.boardCards) ? proj.boardCards : Object.values(proj.boardCards || {});
     const jobList: any[] = Array.isArray(proj.jobs) ? proj.jobs : Object.values(proj.jobs || {});
     const cardsByJob: Record<string, any[]> = {};

@@ -20,6 +20,7 @@
 import { showSettingsTab } from './settings-menu';
 import { initNotifications, closeNotifications } from './notifications';
 import { initMentionPicker } from './mention-picker';
+import { openProjectsModal, initProjectsModal } from './projects-admin';
 import { openExportModal, closeExportModal, runExport } from './export';
 import { openPrintModal, closePrintModal, syncPrintKind, runPrint } from './print';
 import { downloadIcs } from './ics';
@@ -187,7 +188,8 @@ export function initStaticEventListeners(): void {
   on('printRunBtn', () => runPrint());
   document.querySelectorAll<HTMLInputElement>('input[name="printKind"]').forEach((el) => el.addEventListener('change', () => syncPrintKind()));
   on('changePasswordBtn', () => { closeSettingsMenu(); changeMyPasswordUI(); });
-  on('projectToggleBtn', () => { closeSettingsMenu(); toggleProject(); });
+  on('projectToggleBtn', () => { closeSettingsMenu(); openProjectsModal(); });
+  initProjectsModal();
   on('logoutBtn', () => { closeSettingsMenu(); logout(); });
 
   on('settingsTabGeneral', () => showSettingsTab('general'));

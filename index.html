@@ -3006,6 +3006,38 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   #dataDeletionBanner.show { display: block; }
   .sec-modal { max-width: 520px; max-height: calc(100vh - 48px); overflow-y: auto; }
   .cal-feed-label { font-size: var(--t-sm); margin: var(--s-3) 0 0; }
+  /* Projects window (src/app/projects-admin.ts) */
+  .modal-box.projects-modal { width: min(540px, calc(100vw - 32px)); max-width: none; }
+  .projects-modal input[type="text"], .projects-modal input[type="search"] { font: inherit; font-size: var(--t-sm); padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); box-sizing: border-box; }
+  .projects-modal #projectsSearch { width: 100%; margin-bottom: var(--s-2); }
+  .proj-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .proj-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); padding: 2px 0; border-radius: 10px; }
+  .proj-row.current { background: var(--chrome-hover); }
+  .proj-row.editing { padding: var(--s-1-5) var(--s-2); }
+  .proj-row.editing input { flex: 1; min-width: 140px; }
+  .proj-open { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; gap: var(--s-2-5); padding: var(--s-2) var(--s-2); border: 0; border-radius: 10px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+  .proj-open:hover:not(:disabled) { background: var(--chrome-hover); }
+  .proj-open:disabled { cursor: default; opacity: 0.75; }
+  .proj-open:focus-visible { outline: 2px solid var(--primary-light); outline-offset: -2px; }
+  .proj-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .proj-text { display: grid; min-width: 0; }
+  .proj-name { font-weight: 700; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proj-meta { font-size: var(--t-xs); color: var(--text-light); }
+  .proj-actions { display: flex; gap: 2px; padding-right: var(--s-1); margin-left: auto; }
+  .proj-act { border: 0; background: none; color: var(--primary-light); font: inherit; font-size: var(--t-xs); font-weight: 600; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+  .proj-act:hover, .proj-act[aria-expanded="true"] { background: var(--chrome-hover); }
+  .proj-logo-panel { flex-basis: 100%; display: flex; gap: var(--s-3); align-items: center; margin: 0 var(--s-2) var(--s-2); padding: var(--s-2); border: 1px solid var(--border); border-radius: 10px; }
+  .proj-logo-panel img, .proj-logo-none { width: 72px; height: 72px; object-fit: contain; background: #fff; border-radius: 8px; flex: none; }
+  .proj-logo-none { display: grid; place-items: center; font-size: var(--t-xs); color: #666; border: 1px dashed var(--border); }
+  .proj-logo-panel p { margin: 0 0 var(--s-1-5); font-size: var(--t-xs); color: var(--text-light); }
+  .proj-empty { padding: var(--s-2); color: var(--text-light); font-size: var(--t-sm); }
+  .proj-add-btn { margin-top: var(--s-2); }
+  .proj-add-form { margin-top: var(--s-2); padding: var(--s-2-5); border: 1px solid var(--border); border-radius: 10px; display: grid; gap: var(--s-1-5); font-size: var(--t-sm); }
+  .proj-add-form label { font-weight: 600; }
+  .proj-add-form .proj-add-copy { font-weight: 400; display: flex; gap: var(--s-1-5); align-items: flex-start; }
+  .proj-add-actions { display: flex; gap: var(--s-2); }
+  .proj-archived { margin-top: var(--s-3); }
+  .proj-archived summary { cursor: pointer; font-size: var(--t-sm); font-weight: 600; color: var(--text-light); padding: var(--s-1) 0; }
   .cal-feed-stages { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: grid; gap: 2px; }
   .cal-feed-stages li { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-1) 0; font-size: var(--t-sm); font-weight: 600; }
   .cal-feed-stages .cal-feed-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
@@ -4773,6 +4805,34 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
 </div>
 
 <!-- LIVE CALENDAR LINK — see src/app/calendar-feed.ts -->
+<!-- Projects (src/app/projects-admin.ts): switch project; admins also add,
+     rename, set a board logo, archive and restore. -->
+<div class="modal-overlay" id="projectsModal">
+  <div class="modal-box sec-modal projects-modal">
+    <h4 id="projectsTitle">Projects</h4>
+    <div id="projectsSearchWrap" hidden><input type="search" id="projectsSearch" placeholder="Find a project" aria-label="Find a project" autocomplete="off"></div>
+    <ul class="proj-list" id="projectsList"></ul>
+    <button type="button" class="btn btn-secondary proj-add-btn" id="projectsAddBtn" hidden>+ New project</button>
+    <div class="proj-add-form" id="projectsAddForm" hidden>
+      <label for="projectsAddName">New project name</label>
+      <input type="text" id="projectsAddName" maxlength="80" autocomplete="off">
+      <label class="proj-add-copy"><input type="checkbox" id="projectsAddCopy" checked><span>Copy stages, workflow and field lists from <b id="projectsAddCopyName"></b></span></label>
+      <div class="proj-add-actions">
+        <button type="button" class="btn btn-primary" id="projectsAddCreateBtn">Create</button>
+        <button type="button" class="btn btn-secondary" id="projectsAddCancelBtn">Cancel</button>
+      </div>
+    </div>
+    <details class="proj-archived" id="projectsArchived" hidden>
+      <summary>Archived (<span id="projectsArchivedCount">0</span>)</summary>
+      <ul class="proj-list" id="projectsArchivedList"></ul>
+    </details>
+    <input type="file" id="projectsLogoFile" accept="image/png,image/jpeg,image/webp" hidden>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" data-modal-close>Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="calendarFeedModal">
   <div class="modal-box sec-modal">
     <h4><svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px;margin-right: var(--s-0-75)" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="16" rx="2" fill="#fff" stroke="#1e88e5" stroke-width="1.5"/><rect x="3" y="5" width="18" height="4" rx="2" fill="#1e88e5"/><path d="M8.5 15.5a4.5 4.5 0 0 1 7 0M10.3 17.4a2 2 0 0 1 3.4 0" stroke="#1e88e5" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg> Live calendar link</h4>
@@ -5421,8 +5481,8 @@ var tickResizeState = null;
 // design), so nothing security-relevant depends on this being accurate.
 var currentUserRole = null;
 
-// Which of the two fixed projects (see FIXED_PROJECT_NAMES) this account
-// is restricted to — null means unrestricted (sees both), always true
+// Which project (see src/app/projects-admin.ts) this account
+// is restricted to — null means unrestricted (sees them all), always true
 // for 'admin' and optionally true for any tier below it. Set alongside
 // currentUserRole in applyIdentityFromTokenPayload(); see
 // enforceProjectScopeForRole().

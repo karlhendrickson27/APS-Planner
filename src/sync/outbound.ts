@@ -260,7 +260,10 @@ function pushProjectToShared(projectId: string, headerOverride?: any, opts?: { f
     changed.forEach(function (item: any) { markItemSynced(projectId, kind, item); });
     itemCount += changed.length;
   });
-  const headerValue = { title: header.title || proj.name, subtitle: header.subtitle || '', theme: normalizeThemeColor(header.theme) };
+  const headerValue: Record<string, unknown> = { title: header.title || proj.name, subtitle: header.subtitle || '', theme: normalizeThemeColor(header.theme) };
+  // Board logo and archived flag (src/app/projects-admin.ts), when set.
+  if (typeof header.logo === 'string') headerValue.logo = header.logo;
+  if (typeof header.archived === 'boolean') headerValue.archived = header.archived;
   const headerJson = JSON.stringify(headerValue) + '|' + proj.name;
   const headerChanged = lastSentHeaderJson[projectId] !== headerJson;
   msg.header = headerValue;

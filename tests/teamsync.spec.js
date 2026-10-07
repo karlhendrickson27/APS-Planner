@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { APP_URL, WORKER_ORIGIN, seedSession, mockRoomWebSocket, fakeSessionToken } = require('./helpers');
+const { APP_URL, WORKER_ORIGIN, seedSession, mockRoomWebSocket, addSecondProject, fakeSessionToken } = require('./helpers');
 
 test('login: a valid seeded session bypasses the login overlay', async ({ page }) => {
   await seedSession(page, { role: 'admin' });
@@ -1733,6 +1733,7 @@ test('persistMyChecklistChange: a change to a non-active project\'s checklist is
   });
   await page.goto(APP_URL);
   await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+  await addSecondProject(page);
 
   const setup = await page.evaluate(() => {
     // The freshly-seeded "other" project starts with an empty boardCards
@@ -2016,6 +2017,7 @@ test('cross-project isolation: a project-restricted account cannot switch to the
   await mockRoomWebSocket(page);
   await page.goto(APP_URL);
   await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+  await addSecondProject(page);
   const projectIds = await page.evaluate(() => Object.keys(projects));
   expect(projectIds.length).toBe(2);
   const [assignedId, otherId] = projectIds;

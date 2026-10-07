@@ -312,32 +312,22 @@ export function enforceProjectScopeForRole(): void {
   }
 }
 
-// Adding, duplicating, and deleting projects is intentionally disabled —
-// this app is locked to exactly two fixed projects (see
-// enforceFixedProjectSet). These are kept as no-ops, rather than removed
-// outright, so any leftover call site just shows a toast instead of erroring.
-// ===== FIXED PROJECT SET =====
-// This app is locked to exactly two projects. On load (and again after the
-// initial room sync resolves — since remote data can otherwise
-// overwrite this local rename) it renames whatever the original single
-// project was into "ADVANCED PRECUT SYSTEMS" and creates "BLUDORN BUILDERS"
-// if it doesn't exist yet, so every browser and the shared room converge on
-// the same two. Returns the ids of any project it created, so the caller
-// can push just those to the shared room.
-//
-// IMPORTANT: this only ever CREATES a project, when there are fewer than
-// two — it never renames an existing one. It used to also forcibly rename
-// "whichever project came first" back to FIXED_PROJECT_NAMES[0]/[1] every
-// single time it ran (this runs on every page load), which meant a rename
-// would silently revert on the next reload. Nothing in the UI can rename a
-// project any more (the old "Edit Header Title" settings item and
-// renameProject() were removed — per-user request, project rename isn't
-// needed), but saveActiveProject() still syncs p.name from the (hidden)
-// header text on every save, so that path is harmless dead weight rather
-// than actively wrong — so FIXED_PROJECT_NAMES is only ever used as a
-// starter name for a newly
-// created project, never re-asserted onto an existing one.
-export const FIXED_PROJECT_NAMES = ['ADVANCED PRECUT SYSTEMS', 'BLUDORN BUILDERS'];
+// ===== AT LEAST ONE PROJECT =====
+// Admins add, rename and archive projects in the Projects window
+// (src/app/projects-admin.ts, roadmap A1). This only makes sure there is
+// one: an empty room (a brand-new install) gets a single starter project.
+// It never renames an existing project. Returns the ids of any project it
+// created, so the caller can push just those to the shared room.
+export const STARTER_PROJECT_NAME = 'Main project';
+
+// Archived projects stay in the room (nothing is deleted) but drop out of
+// the project list, notifications and the user-admin project picker.
+export function isProjectArchived(p: any): boolean {
+  return !!(p && p.header && p.header.archived);
+}
+export function activeProjectIds(): string[] {
+  return Object.keys(projects).filter(function (id) { return !isProjectArchived(projects[id]); });
+}
 
 // Deterministic, not Date.now()-based: two browsers racing to bootstrap a
 // genuinely empty shared room (see bootstrapFirstSnapshot() in
@@ -353,7 +343,7 @@ export function slugifyFixedProjectName(name: string): string {
 
 export function enforceFixedProjectSet(): string[] {
   const changedIds: string[] = [];
-  if (Object.keys(projects).length >= 2) return changedIds;
+  if (Object.keys(projects).length >= 1) return changedIds;
 
   function makeProject(id: string, name: string) {
     const p: any = {
@@ -375,12 +365,8 @@ export function enforceFixedProjectSet(): string[] {
     return p;
   }
 
-  while (Object.keys(projects).length < 2) {
-    // Whichever default name isn't already taken, so backfilling a second
-    // project never creates a same-named duplicate of the first (e.g. a
-    // solo project that already happens to be named FIXED_PROJECT_NAMES[0]).
-    const usedNames = Object.values(projects).map(function (p: any) { return p.name; });
-    const name = usedNames.indexOf(FIXED_PROJECT_NAMES[0]) === -1 ? FIXED_PROJECT_NAMES[0] : FIXED_PROJECT_NAMES[1];
+  {
+    const name = STARTER_PROJECT_NAME;
     const id = slugifyFixedProjectName(name);
     projects[id] = makeProject(id, name);
     if (!activeProjectId) activeProjectId = id;
@@ -497,7 +483,7 @@ export function saveActiveProject(): void {
 // of the menu, grouped with Log Out (see its own comment in index.html),
 // is what guards against that now.
 export function toggleProject(): void {
-  const ids = Object.keys(projects);
+  const ids = activeProjectIds();
   if (ids.length < 2) return;
   const currentIdx = ids.indexOf(activeProjectId as string);
   const nextIdx = (currentIdx + 1) % ids.length;
@@ -522,16 +508,15 @@ export function updateProjectToggle(): void {
     (item as HTMLElement).style.display = 'none';
     return;
   }
-  const ids = Object.keys(projects);
-  if (ids.length < 2) {
+  // Admins always get it (it's where projects are added); others only
+  // when there's more than one project to pick from.
+  const isAdmin = currentUserRole === 'admin';
+  if (!isAdmin && activeProjectIds().length < 2) {
     (item as HTMLElement).style.display = 'none';
     return;
   }
   (item as HTMLElement).style.display = '';
-  const currentIdx = ids.indexOf(activeProjectId as string);
-  const nextIdx = (currentIdx + 1) % ids.length;
-  const nextProject = projects[ids[nextIdx]];
-  if (label) label.textContent = 'Switch to ' + (nextProject ? nextProject.name : 'project');
+  if (label) label.textContent = isAdmin ? 'Projects' : 'Switch project';
 }
 
 export function renderAll(): void {
@@ -685,8 +670,13 @@ export function setLinkEnabledLocally(jobId: string, otherJobId: string, enabled
   saveLinkEnabledPref();
 }
 
+// Every other (not archived) project, for "Link to a job in another
+// project". The first one is the default pick.
+export function getOtherProjectIds(projectId: string | null): string[] {
+  return activeProjectIds().filter(function (id) { return id !== projectId; });
+}
 export function getOtherFixedProjectId(projectId: string | null): string | null {
-  return Object.keys(projects).find(function (id) { return id !== projectId; }) || null;
+  return getOtherProjectIds(projectId)[0] || null;
 }
 
 // One entry per active-project job whose link is turned on for THIS
