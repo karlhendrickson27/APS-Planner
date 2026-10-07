@@ -79,6 +79,9 @@ test('projects: an admin adds a project (copying stages), renames it, archives a
   await page.locator('#projectsArchivedList [data-act="restore"]').click();
   await expect(page.locator('#projectsList .proj-row')).toHaveCount(2);
   await expect(page.locator('#projectsArchived')).toBeHidden();
+
+  await page.locator('#projectsCloseBtn').click();
+  await expect(page.locator('#projectsModal')).not.toHaveClass(/show/);
 });
 
 test('projects: a logo upload is shrunk, saved on the project and shown behind the Board', async ({ page }) => {

@@ -287,6 +287,7 @@ export function initProjectsModal(): void {
     if (t.id === 'projRenameInput' && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renamingId = null; render(); }
     if (t.id === 'projectsAddName' && e.key === 'Enter') { e.preventDefault(); el('projectsAddCreateBtn').click(); }
   });
+  el('projectsCloseBtn').addEventListener('click', closeProjectsModal);
   el<HTMLInputElement>('projectsSearch').addEventListener('input', function () { query = this.value; render(); });
   el('projectsAddBtn').addEventListener('click', function () {
     adding = true; render();
