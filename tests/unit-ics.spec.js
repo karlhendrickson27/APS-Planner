@@ -56,6 +56,14 @@ test('calendar link: shows the private link for this project, resets and turns o
   const pid = await page.evaluate(() => activeProjectId);
   await expect(page.locator('#calFeedUrl')).toHaveValue(new RegExp('/cal/' + 'a'.repeat(40) + '/' + pid + '\.ics$'));
 
+  // One row per stage on the schedule, each copying its own link.
+  const stages = await page.evaluate(() => BOARD_COLUMNS.filter((c) => !c.hideFromSchedule).map((c) => c.id));
+  await expect(page.locator('#calFeedStages li')).toHaveCount(stages.length);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.locator('#calFeedStages li').first().getByRole('button').click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toMatch(new RegExp('/cal/' + 'a'.repeat(40) + '/' + pid + '/' + stages[0] + '\\.ics$'));
+
   await page.locator('#calFeedResetBtn').click();
   await expect(page.locator('#calFeedUrl')).toHaveValue(new RegExp('/cal/' + 'b'.repeat(40) + '/'));
 

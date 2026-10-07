@@ -6,7 +6,7 @@ import { signRoomToken } from './room-token.ts';
 const PROJECT = {
   name: 'Advanced Precut',
   jobs: {
-    j1: { id: 'j1', name: 'Hendricks Residence', tasks: [{ id: 't1', name: 'Cut', start: '2026-10-05', finish: '2026-10-07' }] },
+    j1: { id: 'j1', name: 'Hendricks Residence', tasks: [{ id: 't0', name: 'Design', columnId: 'design', start: '2026-10-01', finish: '2026-10-02' }, { id: 't1', name: 'Cut', columnId: 'cut', start: '2026-10-05', finish: '2026-10-07' }] },
     j2: { id: 'j2', name: 'Private Job', tasks: [{ id: 't2', name: 'Panel', start: '2026-10-08', finish: '2026-10-08' }] },
     j3: { id: 'j3', name: 'Old Job', archived: true, tasks: [{ id: 't3', name: 'Deliver', start: '2026-10-01', finish: '2026-10-01' }] },
   },
@@ -18,7 +18,7 @@ const PROJECT = {
     e1: { id: 'e1', title: 'Safety meeting', start: '2026-10-06', time: '07:30', visibility: 'all' },
     e2: { id: 'e2', title: 'Boss only', start: '2026-10-06', visibility: 'private', createdBy: 'boss' },
   },
-  boardColumns: [{ id: 'cut', label: 'Cut' }],
+  boardColumns: [{ id: 'design', label: 'Design' }, { id: 'cut', label: 'Cut' }],
 };
 
 function makeEnv(users) {
@@ -49,7 +49,7 @@ async function link(env, u, action) {
   const res = await handleCalendarFeedLink(req({ token, action }), env, {});
   return { status: res.status, body: await res.json() };
 }
-const feed = (env, feedToken, pid = 'p1') => handleCalendarFeed(env, {}, new URL('https://x/cal/' + feedToken + '/' + pid + '.ics'));
+const feed = (env, feedToken, pid = 'p1', stage) => handleCalendarFeed(env, {}, new URL('https://x/cal/' + feedToken + '/' + pid + (stage ? '/' + stage : '') + '.ics'));
 
 test('link: get creates one and returns the same one again; reset replaces it; off removes it', async () => {
   const env = makeEnv([user('ed', 'editor')]);
@@ -120,4 +120,18 @@ test('eventOccurrences: weekly repeats honor skipped and moved dates and the ran
   const evt = { start: '2026-10-01', repeat: 'weekly', repeatUntil: '2026-10-29', exceptions: { '2026-10-08': { skip: true }, '2026-10-15': { start: '2026-10-16' } } };
   const occ = eventOccurrences(evt, '2026-10-01', '2026-10-22');
   assert.deepEqual(occ.map((o) => o.sourceDate + '>' + o.start), ['2026-10-01>2026-10-01', '2026-10-15>2026-10-16', '2026-10-22>2026-10-22']);
+});
+
+test('feed: a stage link holds only that stage tasks, no events, and is named after the stage', async () => {
+  const env = makeEnv([user('ed', 'editor')]);
+  const { body } = await link(env, user('ed', 'editor'), 'get');
+  const res = await feed(env, body.feedToken, 'p1', 'cut');
+  assert.equal(res.status, 200);
+  const text = await res.text();
+  assert.match(text, /X-WR-CALNAME:TeamSync — Cut/);
+  assert.match(text, /Hendricks Residence — Cut/);
+  assert.doesNotMatch(text, /— Design/);
+  assert.doesNotMatch(text, /Safety meeting/);
+  assert.match(await (await feed(env, body.feedToken)).text(), /— Design/, 'the full link still has every stage');
+  assert.equal((await feed(env, body.feedToken, 'p1', 'nope')).status, 404);
 });

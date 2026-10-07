@@ -2941,6 +2941,12 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   }
   #dataDeletionBanner.show { display: block; }
   .sec-modal { max-width: 520px; max-height: calc(100vh - 48px); overflow-y: auto; }
+  .cal-feed-label { font-size: var(--t-sm); margin: var(--s-3) 0 0; }
+  .cal-feed-stages { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: grid; gap: 2px; }
+  .cal-feed-stages li { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-1) 0; font-size: var(--t-sm); font-weight: 600; }
+  .cal-feed-stages .cal-feed-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .cal-feed-stages li span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-feed-stages .btn { padding: var(--s-1) var(--s-3); font-size: var(--t-xs); }
   .cal-feed-row { display: flex; gap: var(--s-2); margin: var(--s-2) 0 var(--s-4); }
   .cal-feed-row input { flex: 1; min-width: 0; font: inherit; font-size: var(--t-sm); color: var(--text); padding: var(--s-1-5) var(--s-2); border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
   .sec-section { border-top: 1px solid var(--border); padding: var(--s-3) 0 var(--s-4); }
@@ -4704,10 +4710,16 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
     <h4><svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px;margin-right: var(--s-0-75)" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="16" rx="2" fill="#fff" stroke="#1e88e5" stroke-width="1.5"/><rect x="3" y="5" width="18" height="4" rx="2" fill="#1e88e5"/><path d="M8.5 15.5a4.5 4.5 0 0 1 7 0M10.3 17.4a2 2 0 0 1 3.4 0" stroke="#1e88e5" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg> Live calendar link</h4>
     <p>Add the <b id="calFeedProject"></b> schedule to Outlook or Google Calendar once, and it keeps itself up to date. Calendar apps check for changes every few hours.</p>
     <div id="calFeedOnPart">
+      <h5 class="cal-feed-label">Everything: every stage plus calendar events</h5>
       <div class="cal-feed-row">
         <input type="text" id="calFeedUrl" readonly aria-label="Your calendar link" spellcheck="false">
         <button type="button" class="btn btn-primary" id="calFeedCopyBtn">Copy</button>
       </div>
+      <section class="sec-section">
+        <h5>One calendar per stage</h5>
+        <p>Google and Outlook give each calendar one color. To color by stage, add the stages you want as separate calendars, then pick each one's color there.</p>
+        <ul class="cal-feed-stages" id="calFeedStages"></ul>
+      </section>
       <section class="sec-section">
         <h5>Google Calendar</h5>
         <p>On a computer, next to <b>Other calendars</b> click <b>+</b>, then <b>From URL</b>. Paste the link and click <b>Add calendar</b>.</p>

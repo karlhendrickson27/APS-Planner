@@ -1,6 +1,10 @@
 // --- LIVE CALENDAR FEED (roadmap J6, part 1) ---
 //   POST /calendar-feed/link  {token, action?: 'get' | 'reset' | 'off'} -> {feedToken: string | null}
 //   GET  /cal/<feedToken>/<projectId>.ics                               -> text/calendar
+//   GET  /cal/<feedToken>/<projectId>/<stageId>.ics                     -> one Board stage only
+// A stage link holds only that stage's tasks (task.columnId) and no calendar
+// events. Google and Outlook color whole calendars, not single events, so
+// subscribing to a few stages lets people give each stage its own color.
 // A private address people paste into Outlook or Google Calendar once; the
 // calendar app then re-fetches it on its own schedule (a few hours, the
 // app decides), so the schedule stays current without downloading a file.
@@ -80,7 +84,7 @@ export async function resolveFeedUser(env: Env, feedToken: string): Promise<User
 }
 
 export async function handleCalendarFeed(env: Env, corsHeaders: Record<string, string>, url: URL): Promise<Response> {
-  const m = /^\/cal\/([^/]+)\/([^/]+)\.ics$/.exec(url.pathname);
+  const m = /^\/cal\/([^/]+)\/([^/]+?)(?:\/([^/]+))?\.ics$/.exec(url.pathname);
   const notFound = () => new Response('Not found', { status: 404, headers: corsHeaders });
   if (!m) return notFound();
   const user = await resolveFeedUser(env, m[1]);
@@ -91,7 +95,9 @@ export async function handleCalendarFeed(env: Env, corsHeaders: Record<string, s
   const state = (await res.json()) as RoomState | null;
   const project = state && state.projects ? state.projects[projectId] : undefined;
   if (!project) return notFound();
-  const text = buildFeedIcs(project, user, new Date());
+  const stageId = m[3] ? decodeURIComponent(m[3]) : undefined;
+  if (stageId !== undefined && !stageColumn(project, stageId)) return notFound();
+  const text = buildFeedIcs(project, user, new Date(), stageId);
   return new Response(text, {
     headers: {
       ...corsHeaders,
@@ -210,7 +216,12 @@ export function eventOccurrences(evt: AnyObj, from: string, to: string): { sourc
   return out;
 }
 
-export function buildFeedIcs(project: Project, user: UserRecord, now: Date): string {
+function stageColumn(project: Project, stageId: string): AnyObj | undefined {
+  const columns: AnyObj[] = Array.isArray(project.boardColumns) ? (project.boardColumns as AnyObj[]) : [];
+  return columns.find((c) => c && c.id === stageId);
+}
+
+export function buildFeedIcs(project: Project, user: UserRecord, now: Date, stageId?: string): string {
   const projectName = project.name ? String(project.name) : 'TeamSync';
   const stamp = utcStamp(now);
   const cards: AnyObj[] = Object.values(project.boardCards || {});
@@ -218,7 +229,7 @@ export function buildFeedIcs(project: Project, user: UserRecord, now: Date): str
   const stageLabel = (column: unknown) => { const col = columns.find((c) => c && c.id === column); return col && col.label ? String(col.label) : ''; };
   const lines: string[] = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TeamSync//Live schedule//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-    'X-WR-CALNAME:' + icsEscape('TeamSync — ' + projectName),
+    'X-WR-CALNAME:' + icsEscape('TeamSync — ' + (stageId ? stageLabel(stageId) || 'Stage' : projectName)),
     'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H',
   ];
   const add = (props: string[]) => { lines.push('BEGIN:VEVENT', ...props, 'END:VEVENT'); };
@@ -235,6 +246,7 @@ export function buildFeedIcs(project: Project, user: UserRecord, now: Date): str
       phaseSubUnits(phase).forEach((sub) => realTasks(sub.tasks).forEach((t) => {
         const s = validDate(t.start), f = validDate(t.finish) || s;
         if (!s) return;
+        if (stageId && t.columnId !== stageId) return;
         const details = [
           phaseName ? 'Phase: ' + phaseName : '',
           !sub.isDefault && sub.name ? 'Sub-phase: ' + sub.name : '',
@@ -255,6 +267,12 @@ export function buildFeedIcs(project: Project, user: UserRecord, now: Date): str
       }));
     });
   });
+
+  // Calendar events aren't tied to a stage, so they're only in the full link.
+  if (stageId) {
+    lines.push('END:VCALENDAR');
+    return lines.map(fold).join('\r\n') + '\r\n';
+  }
 
   const today = isoDay(now);
   const from = addDays(today, -30);
