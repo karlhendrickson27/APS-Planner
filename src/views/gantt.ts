@@ -41,6 +41,7 @@ import { renderFocusBannerInto } from './gantt-focus-banner';
 import { renderTaskRowsInto, type TaskRowProps, type TaskRowPillProps } from './gantt-task-row';
 import { renderTimelineBarsInto, type TaskBarEntryProps, type BarTagData, type JobSpanTickData, type JobSpanSegmentData, type JobSpanDueData } from './gantt-task-bar';
 import { renderGridLinesInto, renderRowBgInto, renderTodayLineInto, type RowBgEntry, type TodayLineData } from './gantt-grid-decor';
+import { updateGanttPinnedNames } from './gantt-pinned-names';
 import { showToast, moveTooltip, hideTooltip } from '../utils/ui';
 import { hasMinTier } from '../auth/permissions';
 
@@ -3290,6 +3291,7 @@ function setHeaderScroll(px: number): void {
   const header = document.getElementById('timelineHeader');
   if (header) header.style.transform = 'translateX(-' + px + 'px)';
   updateGanttTodayMark(px);
+  updateGanttPinnedNames(px);
 }
 
 // The red "Today" tag in the date header: hidden while today's column is

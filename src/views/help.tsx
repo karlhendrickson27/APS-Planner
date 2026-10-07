@@ -109,6 +109,7 @@ const SECTIONS: Section[] = [
           <li><b>− +</b> at the bottom zoom out and in; <b>Reset</b> goes back to normal. Pinching or Ctrl+scroll zooms too.</li>
           <li>When today is scrolled out of view, the red <b>Today</b> tag takes you back.</li>
           <li>Finished jobs drop off the chart.</li>
+          <li>On a phone, a job's name stays at the edge of the screen as you scroll, and a job whose bar is off screen shows its name in grey at that edge.</li>
         </ul>
         <div class="help-key"><GanttKeyBody /></div>
       </>

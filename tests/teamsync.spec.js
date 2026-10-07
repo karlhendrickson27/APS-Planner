@@ -3076,3 +3076,47 @@ test('Navbar: Calendar and Reports controls sit in the top bar on wide screens a
   await page.locator('#tab-calendar').click();
   await expect(page.locator('#panel-calendar #calTodayBtn')).toBeVisible();
 });
+
+test('gantt (phone): job names stay on screen while scrolling, and off-screen rows get an edge label', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedSession(page, { role: 'admin' });
+  await mockRoomWebSocket(page);
+  await page.goto(APP_URL);
+  await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+  await page.locator('#tab-gantt').click();
+
+  // Two jobs: one long bar starting today, one short bar three weeks out.
+  const names = await page.evaluate(() => {
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const schedule = (job, offset, len) => {
+      const s = new Date(); s.setHours(12, 0, 0, 0); s.setDate(s.getDate() + offset);
+      const f = new Date(s); f.setDate(f.getDate() + len - 1);
+      getJobPhases(job).forEach((ph) => getPhaseSubUnits(ph).forEach((sub) => (sub.tasks || []).forEach((t) => { t.start = iso(s); t.finish = iso(f); })));
+    };
+    schedule(jobs[0], 0, 20);
+    schedule(jobs[1], 21, 2);
+    renderGantt();
+    return [jobs[0].name, jobs[1].name];
+  });
+
+  // Scroll so the long bar's start is well off the left edge.
+  const result = await page.evaluate((longName) => {
+    const tb = document.getElementById('timelineBody');
+    const host = Array.from(document.querySelectorAll('.job-span-name-wrap, .task-bar'))
+      .find((el) => (el.querySelector('.task-bar-job-tag')?.textContent || '').includes(longName));
+    tb.scrollLeft = parseFloat(host.style.left) + 150;
+    tb.dispatchEvent(new Event('scroll'));
+    return new Promise((r) => requestAnimationFrame(() => r({
+      shift: parseFloat(host.style.getPropertyValue('--pin-shift')),
+      edges: Array.from(document.querySelectorAll('.gantt-pin-edge')).map((e) => e.textContent),
+    })));
+  }, names[0]);
+  expect(result.shift).toBeGreaterThanOrEqual(150);
+  expect(result.edges.some((t) => t.includes(names[1]) && t.includes('›'))).toBe(true);
+
+  // Desktop: nothing pinned, no edge labels.
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await page.evaluate(() => { const tb = document.getElementById('timelineBody'); tb.dispatchEvent(new Event('scroll')); });
+  await expect(page.locator('.gantt-pin-edge')).toHaveCount(0);
+});
+

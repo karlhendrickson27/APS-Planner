@@ -1082,6 +1082,19 @@
      don't fit whole instead of letting them shrink into tiny circles. */
   .task-bar-job-tag ~ .task-bar-job-tag { flex-shrink: 0; }
   .task-bar-job-tag[data-fit-hidden] { display: none; }
+  /* Phone Gantt pinned names (src/views/gantt-pinned-names.ts): --pin-shift
+     slides a bar's name along to the screen's left edge; the layer holds
+     names placed beside a mostly-hidden bar and the grey edge labels for
+     rows whose bars are all off screen. Inert everywhere else. */
+  .task-bar-job-tag { translate: var(--pin-shift, 0px) 0; }
+  [data-pin-hidden] > .task-bar-job-tag { visibility: hidden; }
+  .gantt-pin-layer { position: absolute; inset: 0; pointer-events: none; z-index: 75; }
+  .gantt-pin-out, .gantt-pin-edge {
+    position: absolute; font-size: var(--t-2xs); font-weight: 700; line-height: 18px; white-space: nowrap; color: var(--text);
+  }
+  .gantt-pin-edge { display: inline-flex; align-items: center; gap: 4px; color: var(--text-light); }
+  .gantt-pin-edge-r { transform: translateX(-100%); }
+  .gantt-pin-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .task-bar-resize-handle {
     position: absolute; top: 0; bottom: 0; width: 14px;
     cursor: ew-resize; z-index: 5;
