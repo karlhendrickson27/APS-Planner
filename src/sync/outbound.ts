@@ -19,7 +19,7 @@
 //
 // localActivityLog is a `var` in index.html, since logActivity() below
 // reads/writes it from this separately-bundled script.
-import { setSyncIndicator } from './connection';
+import { setSyncIndicator, refreshSyncIndicator } from './connection';
 import { USERNAME_KEY, DISPLAY_NAME_KEY, getStoredDisplayName, setStoredSessionToken } from '../auth/session';
 import { normalizeThemeColor, getSavedThemeColor } from '../app/theme';
 import { renderActivityLogSidebar } from '../app/activity-log';
@@ -110,6 +110,7 @@ function sendRoomMessage(msg: Record<string, unknown>): string {
   msg.msgId = 'm' + (++msgSeq) + '-' + Date.now();
   pendingWrites.set(msg.msgId as string, { msg: msg, sentAt: Date.now() });
   armStuckWriteWatch();
+  refreshSyncIndicator();
   if (roomSocket && roomSocket.readyState === 1) {
     try { roomSocket.send(JSON.stringify(msg)); } catch (err) { console.error('Failed to send room message', err); }
   }

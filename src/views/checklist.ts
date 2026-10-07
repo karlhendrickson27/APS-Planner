@@ -444,15 +444,19 @@ function renderMyChecklistToolbar(): void {
   if (myChecklistSelectedContext !== '__assigned__' && !options.some(function (o) { return o.card.id === myChecklistSelectedContext; })) {
     myChecklistSelectedContext = '__assigned__';
   }
-  select.innerHTML = '<option value="__assigned__"' + (myChecklistSelectedContext === '__assigned__' ? ' selected' : '') + '>ASSIGNED TO ME</option>' +
+  select.innerHTML = '<option value="__assigned__"' + (myChecklistSelectedContext === '__assigned__' ? ' selected' : '') + '>Assigned to me</option>' +
     options.map(function (o) { return '<option value="' + o.card.id + '"' + (o.card.id === myChecklistSelectedContext ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('');
   const current = options.find(function (o) { return o.card.id === myChecklistSelectedContext; });
   // Adding/reassigning only makes sense once a specific job is picked —
   // there's no single stage to add to (or "Visible to" list to edit)
   // while looking at the cross-job assigned feed.
   const canAdd = !!current && hasMinTier('editor');
-  if (input) { input.disabled = !canAdd; input.placeholder = canAdd ? 'Add item…' : 'Select a job to add items'; }
+  if (input) { input.disabled = !canAdd; input.placeholder = canAdd ? 'Add item…' : 'Pick a job to add items'; }
   if (addBtn) addBtn.disabled = !canAdd;
+  // Says why Add is disabled, right next to it. Only for people who could
+  // add once a job is picked (viewers can't add at all).
+  const hint = document.getElementById('myChecklistAddHint');
+  if (hint) hint.hidden = !!current || !hasMinTier('editor');
   if (visBody) {
     renderMyChecklistAssigneeDropdownInto(visBody, current
       ? buildMyChecklistAssigneeDropdownProps(
@@ -533,7 +537,7 @@ function renderMyChecklist(): void {
   let emptyCaption: string | undefined;
   if (!isJobView) {
     emptyMessage = 'Nothing assigned to you right now.';
-    emptyCaption = 'Items assigned to you across any job will show up here.';
+    emptyCaption = 'Pick a job above to see or add to its checklist.';
   }
   else if (!jobRows.length) emptyMessage = 'This checklist is empty — add the first item below.';
   else if (!rows.length) emptyMessage = 'Everything on this stage is checked off.';

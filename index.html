@@ -2128,6 +2128,7 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   }
   .my-checklist-add-bar input[type="text"]:disabled, .my-checklist-add-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
   .my-checklist-add-bar select { flex: 0 1 220px; min-width: 0; }
+  .my-checklist-add-hint { font-size: var(--t-sm); color: var(--text-light); white-space: nowrap; }
   .my-checklist-add-bar input[type="text"] { flex: 1 1 200px; min-width: 0; }
   .my-checklist-filter-bar { min-height: 22px; padding: 0 var(--s-0-5) var(--s-2); }
   .my-checklist-hide-done-toggle { display: inline-flex; align-items: center; gap: var(--s-1-5); font-size: var(--t-sm); color: var(--text-light); cursor: pointer; }
@@ -2145,12 +2146,13 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   .my-checklist-item .ci-text { cursor: pointer; }
   .my-checklist-item .ci-text:hover { color: var(--primary); text-decoration: underline; }
   body.dark-mode .my-checklist-item .ci-text:hover { color: var(--primary-ondark); }
+  /* Compact one-line empty state: icon, message, then the next step. */
   .my-checklist-empty {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: var(--s-2-5); padding: var(--s-5) var(--s-5); font-size: var(--t-base); color: var(--text-light); text-align: center;
+    display: flex; align-items: center; gap: var(--s-3);
+    padding: var(--s-2-5) var(--s-1); font-size: var(--t-base); color: var(--text-light);
   }
-  .my-checklist-empty svg { opacity: 0.45; }
-  .my-checklist-empty-caption { font-size: var(--t-xs); color: var(--text-light); max-width: 34ch; }
+  .my-checklist-empty svg { flex: none; opacity: 0.45; }
+  .my-checklist-empty-caption { font-size: var(--t-sm); color: var(--text-light); }
   /* The list's own card — matches .home-widget's recipe so this page
      reads as part of the same app as Home/Board instead of a bare list
      floating on the page background. */
@@ -3016,9 +3018,28 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   .sec-note { font-size: var(--t-sm); color: var(--text-light); margin: var(--s-1-5) 0 var(--s-3); }
 
   /* ===== SYNC INDICATOR ===== */
-  /* Element itself is built in JS (initSyncIndicator/setSyncIndicator) —
-     only the pulse animation needs to live in an actual stylesheet. */
-  @keyframes syncDotPulse { 0%, 100% { box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 0 0 0 rgba(229,57,53,0.55); } 50% { box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 0 0 7px rgba(229,57,53,0); } }
+  /* Small labeled pill, bottom-right (built in initSyncIndicator/
+     setSyncIndicator). Quiet "Live" when fine; amber while connecting;
+     red with a pulsing dot when offline or a change is stuck. Click or tap
+     shows the detail line. Sits under the tour prompt and Help panel. */
+  .sync-pill {
+    position: fixed; bottom: 12px; right: 12px; z-index: 2400;
+    display: inline-flex; align-items: center; gap: 6px; max-width: min(320px, calc(100vw - 24px));
+    padding: 3px 10px 3px 8px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text-light); font: 600 var(--t-2xs)/1.5 inherit; font-family: inherit;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12); cursor: pointer;
+  }
+  .sync-pill .sync-pill-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #43a047; }
+  .sync-pill[data-state="connecting"] .sync-pill-dot { background: #f0ad4e; }
+  .sync-pill[data-state="problem"] { color: #c62828; border-color: rgba(229,57,53,0.45); }
+  .sync-pill[data-state="problem"] .sync-pill-dot { background: #e53935; animation: syncDotPulse 1.6s ease-in-out infinite; }
+  body.dark-mode .sync-pill[data-state="problem"] { color: #ff8a80; }
+  .sync-pill .sync-pill-label { white-space: nowrap; }
+  .sync-pill .sync-pill-detail { display: none; flex-basis: 100%; padding-left: 13px; font-weight: 400; text-align: left; }
+  .sync-pill.expanded { flex-wrap: wrap; row-gap: 2px; border-radius: 12px; padding-block: 5px; }
+  .sync-pill.expanded .sync-pill-detail:not(:empty) { display: block; }
+  @keyframes syncDotPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229,57,53,0.55); } 50% { box-shadow: 0 0 0 5px rgba(229,57,53,0); } }
+  @media (prefers-reduced-motion: reduce) { .sync-pill[data-state="problem"] .sync-pill-dot { animation: none; } }
 
   /* ===== MODAL ===== */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 3000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
@@ -4173,6 +4194,7 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
           <select id="myChecklistAddJobSelect" aria-label="Job for the new item" onchange="onMyChecklistContextChange()"></select>
           <input type="text" id="myChecklistAddInput" placeholder="Add item…" onkeydown="if(event.key==='Enter'){event.preventDefault();addMyChecklistItemFromBar();}">
           <button type="button" id="myChecklistAddBtn" class="btn btn-primary" style="padding: var(--s-1-5) var(--s-3-5);font-size: var(--t-base);">Add</button>
+          <span id="myChecklistAddHint" class="my-checklist-add-hint" hidden>Pick a job first</span>
           <span id="myChecklistAddVisibility"></span>
         </div>
         <div class="my-checklist-filter-bar" id="myChecklistFilterBar"></div>

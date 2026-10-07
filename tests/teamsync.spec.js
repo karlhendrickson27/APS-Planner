@@ -252,8 +252,11 @@ test('sync: a successful reconnect clears the offline indicator and cancels the 
   await page.clock.fastForward(15000);
   const offlineTooltip = await page.evaluate(() => document.getElementById('syncDot')?.title || '');
   expect(offlineTooltip.toLowerCase()).toContain('offline');
+  // The pill's visible label says it too (roadmap B3), not just the tooltip.
+  await expect(page.locator('#syncDot .sync-pill-label')).toHaveText(/^Offline/);
 
   await page.evaluate(() => handleRoomOpen());
+  await expect(page.locator('#syncDot .sync-pill-label')).toHaveText('Live');
   const recoveredTooltip = await page.evaluate(() => document.getElementById('syncDot')?.title || '');
   expect(recoveredTooltip.toLowerCase()).not.toContain('offline');
 

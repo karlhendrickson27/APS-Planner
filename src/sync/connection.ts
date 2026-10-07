@@ -32,52 +32,73 @@ declare global {
   function handleRoomMessage(msg: unknown): void;
 }
 
-// Single small dot, bottom-right — replaces the old always-visible
-// "connecting…/saving…/live" text badge, the full-width red top banner,
-// and the stuck-write toast popup. Stays small and quiet at every state
-// (no text, no popups) — but stays visibly PRESENT rather than
-// disappearing entirely once connected, as a first cut of this redesign
-// briefly did: a faint, low-opacity green dot when everything's fine, so
-// there's still an at-a-glance "yes, this is live" to find if you go
-// looking for it, without it demanding attention. Gets more noticeable
-// only once there's something worth knowing: reconnecting (quiet amber,
-// no motion) or an actual problem — offline for a while, or a change
-// stuck unconfirmed (red, gently pulsing). Hovering it shows the
-// specific reason via a native tooltip rather than a popup.
+// Small labeled pill, bottom-right (roadmap B3; it used to be an unlabeled
+// dot). The label says the state in a word or two: "Live", "Connecting…",
+// "Reconnecting…", "Offline", "Offline: 3 changes waiting", "Not saved".
+// The longer reason is the native tooltip on hover, and a click or tap
+// expands the pill to show it inline (phones have no hover). Styles are the
+// SYNC INDICATOR block in index.html. The element keeps the id syncDot.
 let syncDotEl: HTMLElement | null = null;
+let syncLabelEl: HTMLElement | null = null;
+let syncDetailEl: HTMLElement | null = null;
+let syncState = 'ok';
+let syncTooltip = '';
+let syncOffline = false;
 let offlineSince: number | null = null;
 let offlineEscalateTimer: ReturnType<typeof setTimeout> | null = null;
 
 function initSyncIndicator(): void {
-  const dot = document.createElement('div');
-  dot.id = 'syncDot';
-  dot.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:9999;width:9px;height:9px;border-radius:50%;background:#43a047;opacity:0.35;pointer-events:auto;transition:opacity 0.4s ease,background 0.3s ease;box-shadow:0 1px 3px rgba(0,0,0,0.25);';
-  document.body.appendChild(dot);
-  syncDotEl = dot;
+  const pill = document.createElement('button');
+  pill.type = 'button';
+  pill.id = 'syncDot';
+  pill.className = 'sync-pill';
+  pill.setAttribute('aria-live', 'polite');
+  pill.innerHTML = '<span class="sync-pill-dot" aria-hidden="true"></span><span class="sync-pill-label"></span><span class="sync-pill-detail"></span>';
+  pill.addEventListener('click', function () {
+    pill.classList.toggle('expanded');
+    pill.setAttribute('aria-expanded', String(pill.classList.contains('expanded')));
+  });
+  document.body.appendChild(pill);
+  syncDotEl = pill;
+  syncLabelEl = pill.querySelector('.sync-pill-label');
+  syncDetailEl = pill.querySelector('.sync-pill-detail');
 }
 
-// state: 'ok' (faint green — connected, nothing wrong, the default/happy
-// state most of the time), 'connecting' (quiet amber, e.g. initial
-// connect or a fresh disconnect that might recover in a second or two),
-// 'problem' (red, gently pulsing — offline long enough to matter, or a
-// write that hasn't confirmed in 8+ seconds).
+function pendingChangesText(): string {
+  const n = typeof pendingWrites !== 'undefined' ? pendingWrites.size : 0;
+  return n === 0 ? '' : n === 1 ? '1 change waiting' : n + ' changes waiting';
+}
+
+function renderSyncIndicator(): void {
+  if (!syncDotEl || !syncLabelEl || !syncDetailEl) return;
+  let label: string;
+  if (syncState === 'ok') label = 'Live';
+  else if (syncState === 'connecting') label = syncTooltip || 'Connecting…';
+  else if (syncOffline) label = pendingChangesText() ? 'Offline: ' + pendingChangesText() : 'Offline';
+  else label = 'Not saved';
+  const detail = syncTooltip || (syncState === 'ok' ? 'Connected. Changes save as you make them.' : '');
+  syncDotEl.dataset.state = syncState;
+  syncDotEl.title = syncState === 'ok' ? 'Live' : detail;
+  syncLabelEl.textContent = label;
+  syncDetailEl.textContent = detail && detail !== label ? detail : '';
+}
+
+// state: 'ok' (quiet "Live" — connected, nothing wrong, the default/happy
+// state most of the time), 'connecting' (amber, e.g. initial connect or a
+// fresh disconnect that might recover in a second or two), 'problem' (red,
+// pulsing dot — offline long enough to matter, or a write that hasn't
+// confirmed in 8+ seconds).
 function setSyncIndicator(state: string, tooltip?: string): void {
-  if (!syncDotEl) return;
-  syncDotEl.title = tooltip || (state === 'ok' ? 'Live' : '');
-  if (state === 'ok') {
-    syncDotEl.style.opacity = '0.35';
-    syncDotEl.style.background = '#43a047';
-    syncDotEl.style.animation = 'none';
-    return;
-  }
-  syncDotEl.style.opacity = '0.85';
-  if (state === 'problem') {
-    syncDotEl.style.background = '#e53935';
-    syncDotEl.style.animation = 'syncDotPulse 1.6s ease-in-out infinite';
-  } else {
-    syncDotEl.style.background = '#f0ad4e';
-    syncDotEl.style.animation = 'none';
-  }
+  syncState = state;
+  syncTooltip = tooltip || '';
+  if (state === 'ok') syncOffline = false;
+  renderSyncIndicator();
+}
+
+// Keeps "Offline: N changes waiting" current as changes queue up or get
+// confirmed (called from src/sync/outbound.ts).
+function refreshSyncIndicator(): void {
+  renderSyncIndicator();
 }
 
 // Mirrors the old banner's debounce: a one-second wifi blip shouldn't
@@ -87,6 +108,7 @@ function scheduleOfflineEscalation(): void {
   if (offlineEscalateTimer !== null) clearTimeout(offlineEscalateTimer);
   if (!offlineSince) offlineSince = Date.now();
   offlineEscalateTimer = setTimeout(function () {
+    syncOffline = true;
     setSyncIndicator('problem', "You're offline — changes aren't syncing. Try reloading once you're back online.");
   }, 8000);
 }
@@ -238,6 +260,7 @@ async function setupRoomSync(): Promise<void> {
 export {
   initSyncIndicator,
   setSyncIndicator,
+  refreshSyncIndicator,
   scheduleOfflineEscalation,
   cancelOfflineEscalation,
   isBusyEditing,
