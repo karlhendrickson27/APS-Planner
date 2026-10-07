@@ -34,3 +34,34 @@ test('ics: tasks become all-day events, repeating events expand, text is escaped
   expect((text.match(/SUMMARY:Safety meeting/g) || []).length).toBe(3);
   expect(text).toMatch(/DTSTART:\d{8}T070000\r\nDTEND:\d{8}T080000/);
 });
+
+// Live calendar link (src/app/calendar-feed.ts). The server part has its
+// own tests (worker/src/calendar-feed.test.mjs); this checks the window.
+test('calendar link: shows the private link for this project, resets and turns off', async ({ page }) => {
+  await seedSession(page, { role: 'admin' });
+  await mockRoomWebSocket(page);
+  const actions = [];
+  await page.route('**/calendar-feed/link', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    actions.push(body.action);
+    const feedToken = body.action === 'off' ? null : body.action === 'reset' ? 'b'.repeat(40) : 'a'.repeat(40);
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ feedToken }) });
+  });
+  await page.goto(APP_URL);
+  await expect(page.locator('#freshLoadOverlay')).not.toHaveClass(/show/);
+
+  await page.evaluate(() => toggleSettingsMenu());
+  await page.locator('#calendarFeedBtn').click();
+  await expect(page.locator('#calendarFeedModal')).toHaveClass(/show/);
+  const pid = await page.evaluate(() => activeProjectId);
+  await expect(page.locator('#calFeedUrl')).toHaveValue(new RegExp('/cal/' + 'a'.repeat(40) + '/' + pid + '\.ics$'));
+
+  await page.locator('#calFeedResetBtn').click();
+  await expect(page.locator('#calFeedUrl')).toHaveValue(new RegExp('/cal/' + 'b'.repeat(40) + '/'));
+
+  await page.locator('#calFeedOffBtn').click();
+  await expect(page.locator('#calFeedOffPart')).toBeVisible();
+  await expect(page.locator('#calFeedOnPart')).toBeHidden();
+  await expect(page.locator('#calFeedResetBtn')).toBeHidden();
+  expect(actions).toEqual(['get', 'reset', 'off']);
+});

@@ -25,6 +25,7 @@ import { openSecurityModal, closeSecurityModal, downloadAuditLog, exportAllData,
 import { openTwoStepModal, closeTwoStepModal, startTwoStepSetup, confirmTwoStepSetup, makeNewRecoveryCodes, turnOffTwoStep, setRequireTwoStep } from './two-step';
 import { saveGoogleSettings } from './sso-settings';
 import { openAccountEmailModal, closeAccountEmailModal, saveMyEmail, connectGoogleAccount } from './account-email';
+import { openCalendarFeedModal, closeCalendarFeedModal, copyCalendarFeedUrl, resetCalendarFeed, turnOffCalendarFeed, createCalendarFeed } from './calendar-feed';
 import { toggleHelp } from '../views/help';
 
 declare global {
@@ -172,6 +173,12 @@ export function initStaticEventListeners(): void {
   on('exportRunBtn', () => runExport());
   on('printBtn', () => { closeSettingsMenu(); openPrintModal(); });
   on('downloadIcsBtn', () => { closeSettingsMenu(); downloadIcs(); });
+  on('calendarFeedBtn', () => { closeSettingsMenu(); openCalendarFeedModal(); });
+  on('calFeedCopyBtn', () => copyCalendarFeedUrl());
+  on('calFeedResetBtn', () => resetCalendarFeed());
+  on('calFeedOffBtn', () => turnOffCalendarFeed());
+  on('calFeedCreateBtn', () => createCalendarFeed());
+  on('calFeedCloseBtn', () => closeCalendarFeedModal());
   on('printCancelBtn', () => closePrintModal());
   on('printRunBtn', () => runPrint());
   document.querySelectorAll<HTMLInputElement>('input[name="printKind"]').forEach((el) => el.addEventListener('change', () => syncPrintKind()));

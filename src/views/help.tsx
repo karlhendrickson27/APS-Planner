@@ -94,6 +94,7 @@ const SECTIONS: Section[] = [
         <li>Click a day to see everything on it and add an event. Events can repeat and can be private or shared with certain people.</li>
         <li>Click a bar to open that job.</li>
         <li>Finished jobs drop off the calendar.</li>
+        <li>To see this schedule in Outlook or Google Calendar, use <b>Live calendar link</b> in the Settings menu. It keeps itself up to date.</li>
       </ul>
     ),
   },

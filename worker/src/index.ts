@@ -40,6 +40,7 @@ import { handleReportError, handleErrorsList } from './errors.ts';
 import { handleAdminNotices, handleAdminNoticesSeen } from './admin-notices.ts';
 import { handleMaintenanceStatus, handleSetMaintenanceStatus } from './maintenance.ts';
 import { handleAuditExport, handleDataExport, handleDeletionStatus, handleDeletionSchedule, handleDeletionCancel, runDueDeletion } from './compliance.ts';
+import { handleCalendarFeedLink, handleCalendarFeed } from './calendar-feed.ts';
 export { ApsRoom } from './room-do.ts';
 
 // --- WORKER ENTRYPOINTS ---
@@ -218,6 +219,14 @@ export default {
     }
     if (url.pathname === "/data/export" && request.method === "POST") {
       return handleDataExport(request, env, corsHeaders);
+    }
+    if (url.pathname === "/calendar-feed/link" && request.method === "POST") {
+      return handleCalendarFeedLink(request, env, corsHeaders);
+    }
+    // Live calendar feed (calendar-feed.ts): fetched by Outlook/Google
+    // Calendar themselves, so a plain GET with the secret in the path.
+    if (url.pathname.startsWith("/cal/") && request.method === "GET") {
+      return handleCalendarFeed(env, corsHeaders, url);
     }
     if (url.pathname === "/attachments/upload" && request.method === "POST") {
       return handleAttachmentUpload(request, env, corsHeaders, url);

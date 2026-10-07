@@ -1,6 +1,8 @@
 // Calendar file download (roadmap item A3, part 3): an .ics file that
 // Outlook, Google Calendar and Apple Calendar can all import. It's a
-// snapshot, not a live subscription (that needs a server-side feed).
+// snapshot; the live subscription is Settings > Live calendar link
+// (src/app/calendar-feed.ts, built server-side in worker/src/calendar-feed.ts,
+// which mirrors this file — keep the two in step).
 //  - Every scheduled task of every visible job becomes an all-day event
 //    ("Job — Task"), with phase/stage/customer in the description.
 //  - Calendar events are expanded into their individual occurrences
