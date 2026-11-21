@@ -73,7 +73,10 @@ test('link: refuses a bad session', async () => {
   assert.equal(res.status, 401);
 });
 
-test('feed: an editor sees only their own jobs and the events they can see', async () => {
+test('feed: an editor sees only their own jobs and the events they can see', async (t) => {
+  // The feed lists events from 30 days back, so pin "today" near the sample
+  // dates; otherwise this test starts failing a month after they were written.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-07T12:00:00Z') });
   const env = makeEnv([user('ed', 'editor')]);
   const { body } = await link(env, user('ed', 'editor'), 'get');
   const res = await feed(env, body.feedToken);
