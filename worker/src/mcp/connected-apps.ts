@@ -2,8 +2,9 @@
 //   POST /connected-apps {token}                               -> {available, apps: [...]}
 //   POST /connected-apps {token, action: 'disconnect', grantId} -> {available, apps: [...]}
 // Lists the signed-in person's own Claude connections and lets them end
-// one. Ending it revokes the grant and its tokens at once (the OAuth
-// library deletes them), so Claude has to be connected again to use it.
+// one. Ending it revokes the grant and its tokens (the OAuth library
+// deletes them, and handler.ts refuses any call whose grant is gone), so
+// Claude has to be connected again to use it.
 import { jsonResponse } from '../http.ts';
 import { resolveCaller, getUser } from '../users.ts';
 import { recordAudit, clientIp } from '../audit.ts';
