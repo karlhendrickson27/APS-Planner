@@ -4,6 +4,7 @@
 // synced action shows up right away) with the project's synced log
 // (populated from the room's snapshot by applyRoomSnapshot()).
 import { escapeHtml } from '../utils/html';
+import { splitViaClaude } from '../utils/via-claude';
 import { hasMinTier } from '../auth/permissions';
 import { getActiveProject } from './project';
 import { applyHomeReflowTracks, renderHomeWorkflowMiniBoard } from '../views/home';
@@ -140,9 +141,8 @@ export function renderActivityLogSidebar(): void {
   const html = unique.slice(0, 50).map(function (item) {
     const when = getLogProp(item, 'when') || Date.now();
     // "Name (via Claude)" from the Claude connector: the name plus a small tag.
-    const rawWho = String(getLogProp(item, 'who') || 'Someone');
-    const viaClaude = / \(via Claude\)$/.test(rawWho);
-    const who = escapeHtml(viaClaude ? rawWho.replace(/ \(via Claude\)$/, '') : rawWho) + (viaClaude ? ' <span class="via-claude-tag">via Claude</span>' : '');
+    const whoParts = splitViaClaude(String(getLogProp(item, 'who') || 'Someone'));
+    const who = escapeHtml(whoParts.name) + (whoParts.viaClaude ? ' <span class="via-claude-tag">via Claude</span>' : '');
     const what = escapeHtml(getLogProp(item, 'what') || '');
     return '<div class="activity-log-item">' +
       '<div class="activity-log-time">' + timeAgo(when) + '</div>' +

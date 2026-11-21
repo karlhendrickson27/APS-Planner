@@ -214,9 +214,9 @@ export async function resolveIdentityFromToken(env: Env, token: string | null | 
 }
 
 // Single entry point every authenticated JSON-body endpoint uses.
-// handleAuth() (the /auth login endpoint, in auth.ts) is the only
-// remaining place a raw password is verified — everything past it runs
-// on the token that mints.
+// passwordStep() in auth.ts (used by the /auth login endpoint and the
+// Claude connector's sign-in page) is the only remaining place a raw
+// password is verified — everything past it runs on the token it leads to.
 export async function resolveCaller(env: Env, body: { token?: string } | null | undefined): Promise<Identity | null> {
   return resolveIdentityFromToken(env, body && body.token);
 }

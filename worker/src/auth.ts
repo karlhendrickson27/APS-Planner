@@ -92,6 +92,65 @@ export async function checkSecondFactor(env: Env, user: UserRecord, code: unknow
   return 'code';
 }
 
+// ---- The sign-in rules, shared by the app's /auth + /auth/mfa and the
+// Claude connector's sign-in page (mcp/authorize.ts). Each returns what
+// happened; the caller only chooses how to answer. `via` (e.g. "Claude
+// connector") goes in the audit entries' details. ----
+
+export type PasswordStep =
+  | { kind: 'locked' }
+  | { kind: 'bad' }
+  | { kind: 'mfa'; user: UserRecord }        // right password, two-step code next
+  | { kind: 'mfaSetup'; user: UserRecord }   // company requires two-step, not set up
+  | { kind: 'ok'; user: UserRecord };        // right password, nothing more needed
+
+export async function passwordStep(env: Env, request: Request, ctx: ExecutionContext | undefined, typed: unknown, password: string | undefined, via?: string): Promise<PasswordStep> {
+  const details = via ? { details: via } : {};
+  // The box takes a username or the account's email. Failures count
+  // against the account either way, so switching between the two doesn't
+  // get extra tries.
+  const signInName = await resolveSignInName(env, typed);
+  const keys = failKeys(request, signInName);
+  if (await isLockedOut(env, keys)) {
+    // Skips verifyCredentials()/the PBKDF2 hash entirely once locked out.
+    const blocked = recordAudit(env, Object.assign({ user: signInName, action: 'Sign-in blocked (too many attempts)', ip: clientIp(request) }, details));
+    const wait = later(ctx, blocked); if (wait) await wait;
+    return { kind: 'locked' };
+  }
+  const user = signInName ? await verifyCredentials(env, signInName, password) : null;
+  if (!user) {
+    const bump = Promise.all([bumpAuthFailure(env, keys.user), bumpAuthFailure(env, keys.ip),
+      recordAudit(env, Object.assign({ user: signInName, action: 'Failed sign-in', ip: clientIp(request) }, details))]);
+    const wait = later(ctx, bump); if (wait) await wait;
+    return { kind: 'bad' };
+  }
+  // Password right; the failure count is only cleared once the whole
+  // sign-in succeeds, so wrong codes keep counting toward the lockout.
+  if (user.mfa) return { kind: 'mfa', user };
+  if ((await getSecurityPolicy(env)).requireMfa) return { kind: 'mfaSetup', user };
+  return { kind: 'ok', user };
+}
+
+// The two-step code for an account whose password was already right. On a
+// match the account is saved (code step advanced / recovery code used up).
+export async function mfaStep(env: Env, request: Request, ctx: ExecutionContext | undefined, user: UserRecord, code: unknown, via?: string): Promise<'locked' | 'bad' | 'code' | 'recovery'> {
+  const details = via ? { details: via } : {};
+  const keys = failKeys(request, user.username);
+  if (await isLockedOut(env, keys)) {
+    const wait = later(ctx, recordAudit(env, Object.assign({ user: user.username, action: 'Sign-in blocked (too many attempts)', ip: clientIp(request) }, details))); if (wait) await wait;
+    return 'locked';
+  }
+  const matched = await checkSecondFactor(env, user, code);
+  if (!matched) {
+    const bump = Promise.all([bumpAuthFailure(env, keys.user), bumpAuthFailure(env, keys.ip),
+      recordAudit(env, Object.assign({ user: user.username, role: user.role, action: 'Failed two-step code', ip: clientIp(request) }, details))]);
+    const wait = later(ctx, bump); if (wait) await wait;
+    return 'bad';
+  }
+  await putUser(env, user);
+  return matched;
+}
+
 export async function handleAuth(request: Request, env: Env, corsHeaders: Record<string, string>, ctx: ExecutionContext | undefined): Promise<Response> {
   if (request.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
@@ -104,37 +163,18 @@ export async function handleAuth(request: Request, env: Env, corsHeaders: Record
     return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
   }
 
-  // The box takes a username or the account's email. Failures count
-  // against the account either way, so switching between the two doesn't
-  // get extra tries.
-  const signInName = await resolveSignInName(env, body.username);
-  const keys = failKeys(request, signInName);
-  if (await isLockedOut(env, keys)) {
-    // Skips verifyCredentials()/the PBKDF2 hash entirely once locked out.
-    const blocked = recordAudit(env, { user: signInName, action: 'Sign-in blocked (too many attempts)', ip: clientIp(request) });
-    const wait = later(ctx, blocked); if (wait) await wait;
-    return jsonResponse({ error: "Too many attempts — try again in a few minutes." }, 429, corsHeaders);
-  }
-
-  const user = signInName ? await verifyCredentials(env, signInName, body.password) : null;
-  if (!user) {
-    const bump = Promise.all([bumpAuthFailure(env, keys.user), bumpAuthFailure(env, keys.ip),
-      recordAudit(env, { user: signInName, action: 'Failed sign-in', ip: clientIp(request) })]);
-    const wait = later(ctx, bump); if (wait) await wait;
-    return jsonResponse({ error: "Invalid credentials" }, 401, corsHeaders);
-  }
-
-  // Password right; the failure count is only cleared once the whole
-  // sign-in succeeds, so wrong codes keep counting toward the lockout.
-  if (user.mfa) {
-    const ticket = await signRoomToken(env.ROOM_TOKEN_SECRET, { purpose: 'mfa', username: user.username }, MFA_TICKET_TTL_MS);
+  const step = await passwordStep(env, request, ctx, body.username, body.password);
+  if (step.kind === 'locked') return jsonResponse({ error: "Too many attempts — try again in a few minutes." }, 429, corsHeaders);
+  if (step.kind === 'bad') return jsonResponse({ error: "Invalid credentials" }, 401, corsHeaders);
+  if (step.kind === 'mfa') {
+    const ticket = await signRoomToken(env.ROOM_TOKEN_SECRET, { purpose: 'mfa', username: step.user.username }, MFA_TICKET_TTL_MS);
     return jsonResponse({ mfaRequired: true, ticket }, 200, corsHeaders);
   }
-  if ((await getSecurityPolicy(env)).requireMfa) {
-    const ticket = await signRoomToken(env.ROOM_TOKEN_SECRET, { purpose: 'mfa-setup', username: user.username }, MFA_SETUP_TICKET_TTL_MS);
+  if (step.kind === 'mfaSetup') {
+    const ticket = await signRoomToken(env.ROOM_TOKEN_SECRET, { purpose: 'mfa-setup', username: step.user.username }, MFA_SETUP_TICKET_TTL_MS);
     return jsonResponse({ mfaSetupRequired: true, ticket }, 200, corsHeaders);
   }
-  return issueSession(env, request, ctx, user, 'password', corsHeaders);
+  return issueSession(env, request, ctx, step.user, 'password', corsHeaders);
 }
 
 // POST /auth/mfa {ticket, code} — the second half of a two-step sign-in.
@@ -146,20 +186,9 @@ export async function handleAuthMfa(request: Request, env: Env, corsHeaders: Rec
   if (!user) return jsonResponse({ error: "Your sign-in timed out — enter your password again.", restart: true }, 401, corsHeaders);
   if (!user.mfa) return jsonResponse({ error: "Two-step verification is no longer on for this account — sign in again.", restart: true }, 401, corsHeaders);
 
-  const keys = failKeys(request, user.username);
-  if (await isLockedOut(env, keys)) {
-    const wait = later(ctx, recordAudit(env, { user: user.username, action: 'Sign-in blocked (too many attempts)', ip: clientIp(request) })); if (wait) await wait;
-    return jsonResponse({ error: "Too many attempts — try again in a few minutes." }, 429, corsHeaders);
-  }
-
-  const matched = await checkSecondFactor(env, user, body.code);
-  if (!matched) {
-    const bump = Promise.all([bumpAuthFailure(env, keys.user), bumpAuthFailure(env, keys.ip),
-      recordAudit(env, { user: user.username, role: user.role, action: 'Failed two-step code', ip: clientIp(request) })]);
-    const wait = later(ctx, bump); if (wait) await wait;
-    return jsonResponse({ error: "That code didn't work — check your authenticator app and try again." }, 401, corsHeaders);
-  }
-  await putUser(env, user);
+  const matched = await mfaStep(env, request, ctx, user, body.code);
+  if (matched === 'locked') return jsonResponse({ error: "Too many attempts — try again in a few minutes." }, 429, corsHeaders);
+  if (matched === 'bad') return jsonResponse({ error: "That code didn't work — check your authenticator app and try again." }, 401, corsHeaders);
   const remaining = user.mfa.recovery.length;
   return issueSession(env, request, ctx, user,
     matched === 'recovery' ? 'password + recovery code (' + remaining + ' left)' : 'password + authenticator code',

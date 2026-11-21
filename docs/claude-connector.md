@@ -45,6 +45,13 @@ claude.ai ──Bearer────▶ /mcp  (MCP over Streamable HTTP, stateless
   So it never overwrites someone else's edit. An activity-log line goes
   with each change, e.g. *"Karl Hendrickson (via Claude) moved Highland
   (3 F2) › Ext › Deliver to Nov 25–Nov 25"*.
+- **All or nothing:** each tool call's messages (the edit plus its
+  activity line; for `create_job` the job, its card and the line) are
+  saved together in one commit (`ApsRoom.commitAsUser`) and reach open
+  apps as one update. If any part is refused, nothing is saved.
+- If the connection drops after a write was sent, the tool tells Claude
+  it *may* have saved and to check with `get_job` before retrying, so a
+  shift or a new job isn't done twice.
 
 ## Permission model
 
@@ -60,16 +67,26 @@ re-read from their account on every call:
 
 - Same visibility as the app: a project-restricted account sees only its
   project; below Project Admin, only jobs that list you as a member.
-- Removing an account, resetting its password, or removing and re-adding
-  it ends the connection on the next call. A role or project change
-  applies immediately.
+- Disconnecting, removing an account, resetting its password, or removing
+  and re-adding it ends the connection on the next call, and a role or
+  project change applies on the next call (as soon as Cloudflare KV has
+  the change everywhere: usually at once, at most about a minute). A
+  connection ended by a password reset is revoked and dropped from
+  Connected apps the next time the person opens it.
+- Signing in with Google skips the two-step code, the same as Google
+  sign-in in the app.
 - The room enforces the role and assigned project again on every write
   (`applyAsUser`), so a tool bug can't get past it.
 - There are **no** tools for deleting, archiving, users, roles, backups,
   sign-in settings, project admin, maintenance mode or exports.
 - Writes are refused while maintenance mode is on.
-- Limit: 120 write calls per person per hour (counted in the room's own
-  storage).
+- Limit: 120 saved writes per person per hour (counted in the room's own
+  storage; refused writes and previews don't count). Edits in archived
+  jobs or projects are refused.
+- Claude is told that job names, notes and comments come from teammates
+  and are information, not instructions. Text in a job could still try to
+  steer it, so keep claude.ai's "ask before using a tool" on for the
+  write tools if you want to approve each change.
 - Audit trail: every saved change is recorded under the person's username
   with IP `claude-connector` and "via Claude" in the details. "Connected
   Claude" and "Disconnected Claude" are recorded too, and show as admin
@@ -122,8 +139,9 @@ address, but nothing else is affected.
 ## Disconnecting and undoing
 
 - **One person:** in TeamSync, your initials › **Connected apps** ›
-  **Disconnect**. That revokes the grant and its tokens at once. You can
-  also remove the connector in claude.ai.
+  **Disconnect**. That revokes the grant and its tokens; Claude's next call
+  is refused (within about a minute at most). You can also remove the
+  connector in claude.ai.
 - **Everyone, right away:** roll back the Worker
   (`npx wrangler rollback` from `worker/`, or pick the previous version in
   the Cloudflare dashboard). The app itself is unaffected either way.
@@ -133,11 +151,20 @@ address, but nothing else is affected.
 
 ## Differences from the app worth knowing
 
-- `create_job` places the new card in the Board column its dates point to
-  (the same rule the app applies on its next refresh) and runs that
+- `create_job` starts the card in the first Board column and moves it
+  only where the app's own rule (`deriveColumnForTasks`) would, so a job
+  with only future dates stays in a holding column like Bid. It runs each
   column's checklist automation, as the app does. "Today" is the server's
   date in UTC, so a job created around midnight may land one column
-  earlier or later until the app refreshes it.
+  earlier or later. The server's copy of that rule
+  (`worker/src/mcp/schedule.ts`) must be kept in step with
+  `src/core/jobs.ts`.
+- Saving is last-write-wins per job, the same as between two people in
+  the app: Claude never overwrites an edit it hasn't seen, but someone
+  with an unsent edit to the same job open in the app can overwrite
+  Claude's change when their app saves.
+- "Delete all company data" also clears the connector's sign-in storage
+  (`OAUTH_KV`).
 - Changing dates through Claude doesn't clear a card's manual Board
   column override. The app's job form does, and the override expires by
   itself after 24 hours.

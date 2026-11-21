@@ -63,7 +63,7 @@ export function isProjectArchived(p: Project): boolean {
 }
 export function getProject(state: RoomState, user: McpUser, projectId: unknown): Project {
   if (typeof projectId !== 'string' || !projectId) throw new ToolError('projectId is required. Call list_projects to get it.');
-  const p = state.projects ? state.projects[projectId] : undefined;
+  const p = state.projects && Object.prototype.hasOwnProperty.call(state.projects, projectId) ? state.projects[projectId] : undefined;
   if (!p || !canSeeProject(user, projectId)) throw new ToolError('No project with id "' + projectId + '" that you can see. Call list_projects for the ids.');
   return p;
 }
@@ -82,7 +82,7 @@ export function isJobVisible(job: Job, project: Project, user: McpUser): boolean
 }
 export function getJob(project: Project, user: McpUser, jobId: unknown): Job {
   if (typeof jobId !== 'string' || !jobId) throw new ToolError('jobId is required. Use search_jobs or get_schedule to find it.');
-  const job = project.jobs ? project.jobs[jobId] : undefined;
+  const job = project.jobs && Object.prototype.hasOwnProperty.call(project.jobs, jobId) ? project.jobs[jobId] : undefined;
   if (!job || !isJobVisible(job, project, user)) throw new ToolError('No job with id "' + jobId + '" in that project that you can see.');
   return job;
 }
@@ -260,7 +260,8 @@ export function jobDetail(job: Job, project: Project, projectId: string, comment
 // Mirrors saveJobForm()/addNewJob() in src/views/job-form.ts, plus
 // makePhaseCard() and deriveColumnForTasks() in src/core/jobs.ts: one task
 // per Board column, in column order, colored like its column; one board
-// card for the job, in the column its dates put it in.
+// card for the job, starting in the first column and moved only where the
+// app would move it.
 export interface StageDates { stage: string; start: string; finish: string }
 
 export function findColumn(columns: AnyObj[], stage: string): AnyObj | undefined {
@@ -268,23 +269,30 @@ export function findColumn(columns: AnyObj[], stage: string): AnyObj | undefined
   return columns.find((c) => String(c.id) === stage) || columns.find((c) => String(c.label || '').trim().toLowerCase() === s);
 }
 
-// deriveColumnForTasks() for a brand-new card (no current column, no
-// manual override): the column whose task covers today, else the first
-// dated one if it hasn't started, else the last dated one if it's over,
-// else (in a gap) the last finished one.
-export function deriveColumnForNewCard(tasks: AnyObj[], columns: AnyObj[], today: string): string {
+// deriveColumnForTasks() from src/core/jobs.ts, step for step, for a card
+// sitting in `currentColumn` with no manual override (a new card never has
+// one). Keep the two in step: in order, a card in a schedule-disconnected
+// column stays put; no dates keeps it where it is; a task covering today
+// wins; a card in a hideFromSchedule column (Bid-style holding spot) stays
+// put; then before the first task -> first dated stage, after the last ->
+// last dated stage, in a gap -> the last finished one.
+export function deriveColumnForTasks(tasks: AnyObj[], columns: AnyObj[], today: string, currentColumn: string): string {
+  const current = columns.find((c) => String(c.id) === currentColumn);
+  if (current && current.scheduleDisconnected) return currentColumn;
+  if (!tasks.some((t) => t.start && t.finish)) return currentColumn;
   if (!columns.length) return '';
   let active = -1, lastFinished = -1, firstDated = -1, lastDated = -1;
   tasks.forEach((t, i) => {
     if (!isRealDay(t.start) || !isRealDay(t.finish)) return;
     if (firstDated === -1) firstDated = i;
     lastDated = i;
-    if (today >= t.start && today <= t.finish) active = i;
+    if (today >= t.start && today <= t.finish) active = i; // later overlaps win
     if (today > t.finish) lastFinished = i;
   });
   const idAt = (i: number) => (columns[i] ? String(columns[i].id) : '');
-  if (firstDated === -1) return idAt(0);
   if (active !== -1) return idAt(active);
+  if (current && current.hideFromSchedule) return currentColumn;
+  if (firstDated === -1) return idAt(0);
   if (today < tasks[firstDated].start) return idAt(firstDated);
   if (today > tasks[lastDated].finish) return idAt(lastDated);
   if (lastFinished !== -1) return idAt(lastFinished);
@@ -327,11 +335,11 @@ export function buildNewJob(project: Project, opts: { name: string; color: strin
     customFields: opts.customer ? { customer: opts.customer } : {}, checklists: {}, attachments: [],
     updatedAt: now,
   };
-  // makePhaseCard() starts the card in the first column, then the app's
-  // next syncCardColumns() moves it to where its dates put it; each landing
-  // runs that column's automation once.
+  // makePhaseCard() starts the card in the first column, then the form's
+  // syncCardColumns() moves it if its dates say so; each landing runs that
+  // column's automation once.
   runColumnEntryActions(card, columns);
-  const derived = deriveColumnForNewCard(tasks, columns, todayUtc(now));
+  const derived = deriveColumnForTasks(tasks, columns, todayUtc(now), card.column);
   if (derived && derived !== card.column) { card.column = derived; runColumnEntryActions(card, columns); }
   return { job, card: card as BoardCard };
 }

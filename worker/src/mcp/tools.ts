@@ -27,7 +27,8 @@ type AnyObj = Record<string, any>;
 
 export interface RoomGateway {
   read(): Promise<RoomState>;
-  apply(messages: McpMessage[]): Promise<{ results: ApplyAsUserResult[]; limited?: boolean }>;
+  // Saves the messages together, all or nothing (ApsRoom.applyMcpMessages).
+  apply(messages: McpMessage[]): Promise<{ result?: ApplyAsUserResult; limited?: boolean }>;
 }
 
 export interface ToolContext {
@@ -80,9 +81,12 @@ function day(args: AnyObj, key: string, required: boolean): string {
   if (v && !isRealDay(v)) throw new ToolError(key + ' must be a real date written YYYY-MM-DD, like 2026-11-25.');
   return v;
 }
+// Names every plain object inherits; never a real id, and looking one up
+// would find the inherited property instead of nothing.
+const RESERVED_IDS = new Set(['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf']);
 function id(args: AnyObj, key: string): string {
   const v = str(args, key, { required: true, max: 200 });
-  if (!isSafeIdString(v)) throw new ToolError(key + ' "' + v + '" is not a TeamSync id. Read it from list_projects, get_schedule, search_jobs or get_job; never make one up.');
+  if (!isSafeIdString(v) || RESERVED_IDS.has(v)) throw new ToolError(key + ' "' + v + '" is not a TeamSync id. Read it from list_projects, get_schedule, search_jobs or get_job; never make one up.');
   return v;
 }
 function bool(args: AnyObj, key: string): boolean {
@@ -125,8 +129,22 @@ function withReason(activity: string, reason: string): string {
   return reason ? activity + ' (' + reason + ')' : activity;
 }
 
+const LIMIT_MESSAGE = "You've reached the limit of changes through Claude for this hour. Nothing was saved; try again later.";
+const UNSURE_MESSAGE = "The connection to TeamSync dropped while saving, so this may or may not have been saved. Check with get_job (or search_jobs for a new job) before trying again, so it isn't done twice.";
+
+// Sends a write; a failure after it was sent can't say "nothing was saved".
+async function sendWrite(ctx: ToolContext, messages: McpMessage[]): Promise<{ result?: ApplyAsUserResult; limited?: boolean }> {
+  try {
+    return await ctx.room.apply(messages);
+  } catch (e) {
+    console.error('Connector write: no answer from the room:', e);
+    throw new ToolError(UNSURE_MESSAGE);
+  }
+}
+
 function friendlyApplyError(r: ApplyAsUserResult | undefined): string {
   const e = (r && r.error) || '';
+  if (/^Not saved: /.test(e)) return "Nothing was saved: TeamSync didn't accept the change (the job may have just been deleted, or your role doesn't allow it).";
   if (/^Forbidden: requires (\w+)/.test(e)) return 'Your TeamSync role doesn\'t allow this change.';
   if (/outside your assigned project/.test(e)) return 'That project is outside the one your account is assigned to.';
   if (/Failed to save/.test(e)) return 'TeamSync couldn\'t save just now. Nothing was changed; try again in a moment.';
@@ -146,6 +164,7 @@ async function editJob(ctx: ToolContext, args: AnyObj, opts: { tier: string; kin
     const state = await ctx.room.read();
     const project = getProject(state, ctx.user, projectId);
     const job = getJob(project, ctx.user, jobId);
+    if (isProjectArchived(project)) throw new ToolError('That project is archived. Restore it in TeamSync before changing it.');
     if (job.archived && opts.kind === 'job') throw new ToolError('"' + job.name + '" is archived. Restore it in TeamSync before changing its dates.');
     const out = opts.edit(cloneJob(job), project);
     if (dryRun) {
@@ -161,15 +180,15 @@ async function editJob(ctx: ToolContext, args: AnyObj, opts: { tier: string; kin
       ? { type: 'upsertJob', projectId, job: next, expect }
       : { type: 'upsertProjectBatch', projectId, jobs: [next], expect };
     const log: McpMessage = { type: 'logActivity', projectId, what: withReason(out.activity, reason) };
-    const res = await ctx.room.apply([write, log]);
-    if (res.limited) throw new ToolError('You\'ve reached the limit of changes through Claude for this hour. Nothing was saved; try again later.');
-    const first = res.results[0];
-    if (first && first.rejected && first.rejected.reason === 'stale') {
+    // The edit and its activity line are saved together or not at all.
+    const res = await sendWrite(ctx, [write, log]);
+    if (res.limited) throw new ToolError(LIMIT_MESSAGE);
+    const r = res.result;
+    if (r && r.rejected && r.rejected.reason === 'stale') {
       if (attempt === 0) continue;
       throw new ToolError('Someone else changed this job at the same moment, twice. Nothing was saved. Read it again with get_job and retry.');
     }
-    if (!first || !first.ok) throw new ToolError(friendlyApplyError(first));
-    if (!first.changed) throw new ToolError('Nothing was saved: TeamSync didn\'t accept the change for this job (it may have just been deleted, or your role doesn\'t allow it).');
+    if (!r || !r.ok || !r.changed) throw new ToolError(friendlyApplyError(r));
     return {
       text: 'Saved. ' + out.summary + ' Anyone with TeamSync open sees it now.',
       structured: { dryRun: false, saved: true, projectId, jobId, changes: out.changes },
@@ -469,7 +488,7 @@ export const TOOLS: ToolDef[] = [
           if (!Array.isArray(job.comments)) job.comments = [];
           // `author` is overwritten by the room with the verified name
           // ("Karl Hendrickson (via Claude)", see sanitizeJobCommentAuthors).
-          const comment = { id: ctx.newId(), author: ctx.user.displayName + ' (via Claude)', by: ctx.user.username, text, when: ctx.now(), important: false, via: 'claude' };
+          const comment = { id: ctx.newId(), author: ctx.user.displayName + ' (via Claude)', by: ctx.user.username, text, when: ctx.now(), important: false, via: 'Claude' };
           job.comments.push(comment);
           return {
             next: job,
@@ -542,14 +561,15 @@ export const TOOLS: ToolDef[] = [
       const preview = { name, customer, color, stages: (job.tasks as AnyObj[]).map((t) => ({ stage: stageName(t, columns), start: t.start, finish: t.finish })) };
       if (dryRun) return { text: 'Preview only, nothing saved. ' + summary + '\nRun the same call with dryRun false to create it.', structured: { dryRun: true, saved: false, projectId, job: preview } };
       const expect = { projectId, jobId: job.id, absent: true };
-      const res = await ctx.room.apply([
-        { type: 'upsertJob', projectId, job, expect },
-        { type: 'upsertCard', projectId, card },
+      // Job and card in one batch (new items in a batch need Project Admin,
+      // the same floor as this tool), plus the activity line, all saved and
+      // broadcast together: an open app never sees the job without its card.
+      const res = await sendWrite(ctx, [
+        { type: 'upsertProjectBatch', projectId, jobs: [job], boardCards: [card], expect },
         { type: 'logActivity', projectId, what: withReason('added job "' + name + '"', reason) },
       ]);
-      if (res.limited) throw new ToolError('You\'ve reached the limit of changes through Claude for this hour. Nothing was saved; try again later.');
-      const failed = res.results.find((r) => !r.ok);
-      if (failed || res.results.length < 3) throw new ToolError(friendlyApplyError(failed));
+      if (res.limited) throw new ToolError(LIMIT_MESSAGE);
+      if (!res.result || !res.result.ok || !res.result.changed) throw new ToolError(friendlyApplyError(res.result));
       return { text: 'Created. ' + summary + ' (jobId ' + job.id + ')', structured: { dryRun: false, saved: true, projectId, jobId: job.id, job: preview } };
     },
   },

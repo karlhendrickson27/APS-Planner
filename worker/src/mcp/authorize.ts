@@ -16,15 +16,15 @@
 // and a ticket can't be used as a session. The same lockout counters,
 // audit entries and two-step rules as the app's sign-in apply.
 import { signRoomToken, base64UrlEncode } from '../room-token.ts';
-import { resolveSignInName, verifyCredentials, putUser, bumpAuthFailure } from '../users.ts';
-import { failKeys, isLockedOut, later, recordSignIn, resolveTicket, checkSecondFactor, MFA_TICKET_TTL_MS } from '../auth.ts';
-import { getSecurityPolicy } from '../mfa.ts';
+import { passwordStep, mfaStep, recordSignIn, resolveTicket, MFA_TICKET_TTL_MS } from '../auth.ts';
 import { googleActive, redeemSsoCode } from '../sso.ts';
 import { recordAudit, clientIp } from '../audit.ts';
 import { oauthHelpers, isAllowedRedirectUri, allowLocalhost, grantUserId, OAUTH_SCOPE, CLAUDE_REDIRECT_URIS } from './policy.ts';
 import type { AuthRequestLike, GrantProps, GrantMetadata } from './policy.ts';
 import type { UserRecord } from '../types.ts';
 
+// Added to this page's audit entries ("Signed in — password (Claude connector)").
+const VIA = 'Claude connector';
 const AUTH_REQ_PREFIX = 'mcp-authreq:';
 const AUTH_REQ_TTL_SECONDS = 15 * 60;
 const CONSENT_TICKET_TTL_MS = 10 * 60 * 1000;
@@ -230,43 +230,30 @@ export async function handleAuthorize(request: Request, env: Env, ctx: Execution
     return deniedRedirect(stored);
   }
 
+  // The same lockout, password and two-step rules as the app's sign-in
+  // (passwordStep()/mfaStep() in auth.ts); only the answers differ.
   if (step === 'password') {
-    const signInName = await resolveSignInName(env, field('username'));
-    const keys = failKeys(request, signInName);
-    if (await isLockedOut(env, keys)) {
-      const w = later(ctx, recordAudit(env, { user: signInName, action: 'Sign-in blocked (too many attempts)', ip, details: 'Claude connector' })); if (w) await w;
-      return signInPage(env, url.origin, rid, stored, 'Too many attempts — try again in a few minutes.', 429);
-    }
-    const user = signInName ? await verifyCredentials(env, signInName, field('password')) : null;
-    if (!user) {
-      const w = later(ctx, Promise.all([bumpAuthFailure(env, keys.user), bumpAuthFailure(env, keys.ip),
-        recordAudit(env, { user: signInName, action: 'Failed sign-in', ip, details: 'Claude connector' })])); if (w) await w;
-      return signInPage(env, url.origin, rid, stored, 'That username or password isn\'t right.', 401);
-    }
-    if (user.mfa) {
-      const ticket = await signRoomToken(env.ROOM_TOKEN_SECRET, { purpose: 'mcp-mfa:' + rid, username: user.username }, MFA_TICKET_TTL_MS);
+    const r = await passwordStep(env, request, ctx, field('username'), field('password'), VIA);
+    if (r.kind === 'locked') return signInPage(env, url.origin, rid, stored, 'Too many attempts — try again in a few minutes.', 429);
+    if (r.kind === 'bad') return signInPage(env, url.origin, rid, stored, 'That username or password isn\'t right.', 401);
+    if (r.kind === 'mfa') {
+      const ticket = await signRoomToken(env.ROOM_TOKEN_SECRET, { purpose: 'mcp-mfa:' + rid, username: r.user.username }, MFA_TICKET_TTL_MS);
       return mfaPage(env, rid, ticket, '');
     }
-    if ((await getSecurityPolicy(env)).requireMfa) {
+    if (r.kind === 'mfaSetup') {
       return errorPage(env, 'Your company requires two-step verification. Sign in to the TeamSync app once to set it up, then connect Claude again.', 403);
     }
-    await recordSignIn(env, request, ctx, user, 'password (Claude connector)');
-    return toConsent(env, rid, stored, user);
+    await recordSignIn(env, request, ctx, r.user, 'password (' + VIA + ')');
+    return toConsent(env, rid, stored, r.user);
   }
 
   if (step === 'mfa') {
     const ticket = field('ticket');
     const user = await resolveTicket(env, ticket, 'mcp-mfa:' + rid);
     if (!user || !user.mfa) return signInPage(env, url.origin, rid, stored, 'That took too long. Sign in again.', 401);
-    const keys = failKeys(request, user.username);
-    if (await isLockedOut(env, keys)) return mfaPage(env, rid, ticket, 'Too many attempts — try again in a few minutes.', 429);
-    const matched = await checkSecondFactor(env, user, field('code'));
-    if (!matched) {
-      const w = later(ctx, Promise.all([bumpAuthFailure(env, keys.user), bumpAuthFailure(env, keys.ip),
-        recordAudit(env, { user: user.username, role: user.role, action: 'Failed two-step code', ip, details: 'Claude connector' })])); if (w) await w;
-      return mfaPage(env, rid, ticket, 'That code didn\'t work. Check your authenticator app and try again.', 401);
-    }
-    await putUser(env, user);
+    const matched = await mfaStep(env, request, ctx, user, field('code'), VIA);
+    if (matched === 'locked') return mfaPage(env, rid, ticket, 'Too many attempts — try again in a few minutes.', 429);
+    if (matched === 'bad') return mfaPage(env, rid, ticket, 'That code didn\'t work. Check your authenticator app and try again.', 401);
     await recordSignIn(env, request, ctx, user, (matched === 'recovery' ? 'password + recovery code' : 'password + authenticator code') + ' (Claude connector)');
     return toConsent(env, rid, stored, user);
   }

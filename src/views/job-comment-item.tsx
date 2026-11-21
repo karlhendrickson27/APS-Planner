@@ -1,4 +1,5 @@
 import { render } from 'preact';
+import { splitViaClaude } from '../utils/via-claude';
 
 // One comment thread (a job comment + its replies) — shared by two
 // consumers with the identical visual/interaction shape, just one field
@@ -62,16 +63,14 @@ export interface JobChatItemProps {
   onPostReply: () => void;
 }
 
-// Comments posted through the Claude connector carry the author's name plus
-// " (via Claude)" (worker/src/mcp/). Shown as the name with a small tag so
-// the name itself doesn't get cut off.
-const VIA_CLAUDE = / \(via Claude\)$/;
+// A comment's author, with the "via Claude" tag for ones posted through the
+// Claude connector (see src/utils/via-claude.ts).
 function Author({ name }: { name: string }) {
-  const via = VIA_CLAUDE.test(name);
+  const who = splitViaClaude(name);
   return (
     <span class="job-comment-author" title={name}>
-      {via ? name.replace(VIA_CLAUDE, '') : name}
-      {via ? <span class="via-claude-tag">via Claude</span> : null}
+      {who.name}
+      {who.viaClaude ? <span class="via-claude-tag">via Claude</span> : null}
     </span>
   );
 }

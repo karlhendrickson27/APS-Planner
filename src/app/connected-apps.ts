@@ -1,7 +1,8 @@
 // Account > Connected apps (#connectedAppsModal): the Claude connections
 // this person has made (worker/src/mcp/, docs/claude-connector.md). Each
-// one can act as them in TeamSync with their role; Disconnect ends it at
-// once (the server revokes the grant and its tokens).
+// one can act as them in TeamSync with their role; Disconnect revokes it
+// (the server deletes the grant and its tokens; Claude's next call is
+// refused, within about a minute at most).
 import { openModal, closeModal, showToast } from '../utils/ui';
 import { postUsersEndpoint } from './worker-client';
 import { timeAgo } from './activity-log';
@@ -51,7 +52,7 @@ function render(apps: ConnectedApp[]): void {
 }
 
 async function disconnect(app: ConnectedApp, btn: HTMLButtonElement): Promise<void> {
-  if (!window.confirm('Disconnect ' + app.clientName + '?\n\nIt stops working right away. You can connect it again from Claude later.')) return;
+  if (!window.confirm('Disconnect ' + app.clientName + '?\n\nIt stops working within a minute. You can connect it again from Claude later.')) return;
   btn.disabled = true;
   try {
     const data = await postUsersEndpoint('connected-apps', { action: 'disconnect', grantId: app.grantId });

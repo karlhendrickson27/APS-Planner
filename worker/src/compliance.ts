@@ -170,15 +170,15 @@ async function deleteR2Prefix(env: Env, prefix: string): Promise<number> {
 
 // Lists every key first, then deletes: deleting while paging through a
 // listing can shift the pages and skip keys.
-async function deleteAllKv(env: Env): Promise<number> {
+async function deleteAllKv(kv: KVNamespace): Promise<number> {
   const names: string[] = [];
   let cursor: string | undefined;
   do {
-    const page = await env.USERS_KV.list({ cursor: cursor });
+    const page = await kv.list({ cursor: cursor });
     page.keys.forEach(function (k) { names.push(k.name); });
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
-  for (const name of names) await env.USERS_KV.delete(name);
+  for (const name of names) await kv.delete(name);
   return names.length;
 }
 
@@ -192,7 +192,10 @@ export async function runDueDeletion(env: Env, now?: number): Promise<boolean> {
   if (!res.ok) throw new Error("Room wipe failed: " + res.status);
   const backups = await deleteR2Prefix(env, "backups/");
   const attachments = await deleteR2Prefix(env, "attachments/");
-  const kvKeys = await deleteAllKv(env);
+  // Accounts and settings, plus the Claude connector's sign-ins (its keys
+  // name the username), when that namespace is bound.
+  const oauthKv = (env as unknown as { OAUTH_KV?: KVNamespace }).OAUTH_KV;
+  const kvKeys = await deleteAllKv(env.USERS_KV) + (oauthKv ? await deleteAllKv(oauthKv) : 0);
   await recordAudit(env, { user: scheduled.requestedBy, action: "Deleted all company data",
     details: "requested " + new Date(scheduled.requestedAt).toISOString() + "; removed " + backups + " backups, " + attachments + " attachments, " + kvKeys + " account/setting entries" });
   console.warn("Scheduled deletion complete:", backups, "backups,", attachments, "attachments,", kvKeys, "KV keys");

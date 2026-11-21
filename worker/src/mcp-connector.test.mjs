@@ -15,6 +15,7 @@ import { roomGateway, currentConnectorUser } from './mcp/handler.ts';
 import { isAllowedRedirectUri } from './mcp/policy.ts';
 import { buildNewJob } from './mcp/schedule.ts';
 import { MAINTENANCE_KV_KEY } from './maintenance.ts';
+import { runDueDeletion, DELETION_KV_KEY } from './compliance.ts';
 import { AUDIT_PREFIX } from './audit.ts';
 
 // ---- Fakes ----
@@ -559,8 +560,8 @@ test('the room itself enforces the assigned project too (applyAsUser), even if a
     messages: [{ type: 'upsertJob', projectId: 'p1', job: { id: 'highland', updatedAt: 99999 } }],
   }) }));
   const body = await r.json();
-  assert.equal(body.results[0].ok, false);
-  assert.match(body.results[0].error, /outside your assigned project/);
+  assert.equal(body.result.ok, false);
+  assert.match(body.result.error, /outside your assigned project/);
   assert.equal((await job(room, 'p1', 'highland')).name, 'Highland (3 F2)');
 });
 
@@ -595,7 +596,7 @@ test('stale write: a change landing between read and save is retried once on fre
 test('stale twice gives a clear error and saves nothing', async () => {
   const { env, room } = await setup();
   const ctx = ctxFor(env, 'karl');
-  ctx.room = { read: ctx.room.read, apply: async () => ({ results: [{ ok: false, changed: false, rejected: { reason: 'stale' } }] }) };
+  ctx.room = { read: ctx.room.read, apply: async () => ({ result: { ok: false, changed: false, rejected: { reason: 'stale' } } }) };
   const r = await call(ctx, 'set_task_notes', { projectId: 'p1', jobId: 'highland', taskId: 't-ext-deliver', notes: 'x' });
   assert.equal(r.isError, true);
   assert.match(r.text, /Someone else changed this job/);
@@ -645,7 +646,7 @@ test('bad dates, unknown ids and oversized inputs are refused with friendly mess
 test('a tool that hits an unexpected error says so without a stack trace', async () => {
   const { env } = await setup();
   const ctx = ctxFor(env, 'karl');
-  ctx.room = { read: async () => { throw new Error('boom at room.ts:12'); }, apply: async () => ({ results: [] }) };
+  ctx.room = { read: async () => { throw new Error('boom at room.ts:12'); }, apply: async () => ({}) };
   const r = await call(ctx, 'list_projects', {});
   assert.equal(r.isError, true);
   assert.doesNotMatch(r.text, /boom|room\.ts/);
@@ -684,7 +685,7 @@ test('create_job builds the same structure as the app\'s job form and saves job 
     ['Deliver', 'deliver', 4, '#f87168', '', '', ''],
   ]);
   j.tasks.forEach((t) => assert.deepEqual(Object.keys(t).sort(), ['color', 'columnId', 'finish', 'id', 'name', 'notes', 'order', 'start']));
-  // makePhaseCard(): same fields; column from the dates (today 2026-11-21 is in the gap after Cut).
+  // makePhaseCard(): same fields; it starts in Bid and moves to Cut because Cut covers today (2026-11-21).
   const card = Object.values(s.projects.p1.boardCards).find((c) => c.jobId === jobId);
   assert.deepEqual(Object.keys(card).sort(), ['attachments', 'checklists', 'color', 'column', 'columnEnteredAt', 'customFields', 'description', 'due', 'id', 'jobId', 'manualColumn', 'manualColumnUntil', 'phaseId', 'title', 'updatedAt']);
   assert.equal(card.title, 'Maple St');
@@ -744,4 +745,119 @@ test('mcp-read leaves out logo images and other heavy parts the connector never 
 
 test('TOOLS is the single list the protocol serves', () => {
   assert.equal(TOOLS.length, 9);
+});
+
+// ── Fixes from the review pass ──
+
+test('create_job with only future dates stays in the first (Bid) column, like the app', async () => {
+  const project = seedRoom().projects.p1;
+  let n = 0;
+  const { card } = buildNewJob(project, { name: 'Later', color: '#3949ab', customer: '', stageDates: [{ stage: 'Cut', start: '2026-12-07', finish: '2026-12-09' }] }, Date.UTC(2026, 10, 21), () => 'id' + (++n));
+  assert.equal(card.column, 'bid', 'Bid is a hideFromSchedule holding column: only a task covering today pulls a card out');
+  const noBid = Object.assign({}, project, { boardColumns: COLUMNS.filter((c) => c.id !== 'bid') });
+  const later = buildNewJob(noBid, { name: 'Later', color: '#3949ab', customer: '', stageDates: [{ stage: 'Cut', start: '2026-12-07', finish: '2026-12-09' }] }, Date.UTC(2026, 10, 21), () => 'id' + (++n));
+  assert.equal(later.card.column, 'cut', 'without a holding column it goes to its first dated stage');
+});
+
+test('a connector write is all or nothing: if any message is refused, nothing is saved (not even the activity line)', async () => {
+  const watcher = makeFakeWs({ username: 'pam', displayName: 'Pam Admin', role: 'projectAdmin', assignedProjectId: null, proto: 2 });
+  const { room } = await setup({ sockets: [watcher] });
+  const before = JSON.stringify(await room.loadRoomState());
+  const post = (messages) => room.fetch(new Request('https://internal/internal/mcp-apply', { method: 'POST', body: JSON.stringify({ attachment: { username: 'karl', displayName: 'Karl (via Claude)', role: 'admin', assignedProjectId: null, via: 'Claude' }, messages }) })).then((r) => r.json());
+  const bad = await post([{ type: 'logActivity', projectId: 'p1', what: 'did a thing' }, { type: 'upsertJob', projectId: 'p1', job: { id: 'bad id!' } }]);
+  assert.equal(bad.result.ok, false);
+  const stale = await post([{ type: 'upsertJob', projectId: 'p1', job: { id: 'highland', name: 'X', updatedAt: 99999 }, expect: { projectId: 'p1', jobId: 'highland', updatedAt: 1 } }, { type: 'logActivity', projectId: 'p1', what: 'x' }]);
+  assert.equal(stale.result.rejected.reason, 'stale');
+  const unchanged = await post([{ type: 'upsertJob', projectId: 'p1', job: { id: 'highland', updatedAt: 1 } }, { type: 'logActivity', projectId: 'p1', what: 'x' }]);
+  assert.equal(unchanged.result.ok, false, 'a message that would change nothing refuses the whole write');
+  assert.equal(JSON.stringify(await room.loadRoomState()), before);
+  assert.equal(watcher._sent.length, 0, 'nothing broadcast');
+});
+
+test('a saved connector write reaches open apps as one delta, and only saved writes count toward the hourly limit', async () => {
+  const watcher = makeFakeWs({ username: 'pam', displayName: 'Pam Admin', role: 'projectAdmin', assignedProjectId: null, proto: 2 });
+  const { env, state } = await setup({ sockets: [watcher] });
+  const r = await call(ctxFor(env, 'karl'), 'create_job', { projectId: 'p1', name: 'One Delta', stageDates: [{ stage: 'Cut', start: '2026-12-07', finish: '2026-12-09' }] });
+  assert.equal(r.isError, undefined, r.text);
+  const deltas = watcher._sent.filter((m) => m.type === 'delta');
+  assert.equal(deltas.length, 1);
+  const d = deltas[0].projects.p1;
+  assert.ok(d.jobs[r.structured.jobId], 'job in the delta');
+  assert.ok(Object.values(d.boardCards).some((c) => c.jobId === r.structured.jobId), 'its card in the same delta');
+  assert.equal((await state.storage.get('mcp-rate|karl')).count, 1);
+  await call(ctxFor(env, 'karl'), 'update_task_dates', { projectId: 'p1', jobId: 'nope', taskId: 'x', start: '2026-12-01', finish: '2026-12-01' });
+  assert.equal((await state.storage.get('mcp-rate|karl')).count, 1, 'a refused write did not count');
+});
+
+test('if the room doesn\'t answer after a write was sent, Claude is told it may have saved, not that nothing was saved', async () => {
+  const { env } = await setup();
+  const ctx = ctxFor(env, 'karl');
+  ctx.room = { read: ctx.room.read, apply: async () => { throw new Error('network'); } };
+  const r = await call(ctx, 'shift_tasks', { projectId: 'p1', jobId: 'highland', taskIds: ['t-ext-deliver'], days: 3 });
+  assert.equal(r.isError, true);
+  assert.match(r.text, /may or may not have been saved/);
+  assert.doesNotMatch(r.text, /Nothing was saved/);
+});
+
+test('ids that name built-in object properties are refused; edits in an archived project are refused', async () => {
+  const { env, room } = await setup();
+  const ctx = ctxFor(env, 'karl');
+  for (const bad of ['__proto__', 'constructor', 'toString']) {
+    const r = await call(ctx, 'get_job', { projectId: bad, jobId: 'highland' });
+    assert.equal(r.isError, true, bad);
+    const r2 = await call(ctx, 'get_job', { projectId: 'p1', jobId: bad });
+    assert.equal(r2.isError, true, bad);
+  }
+  const s = await room.loadRoomState();
+  await room.fetch(new Request('https://internal/internal/import', { method: 'POST', body: JSON.stringify({ projects: Object.assign({}, s.projects, { p2: Object.assign({}, s.projects.p2, { header: { archived: true } }) }) }) }));
+  const w = await call(ctx, 'set_task_notes', { projectId: 'p2', jobId: 'other', taskId: 't-o', notes: 'x' });
+  assert.equal(w.isError, true);
+  assert.match(w.text, /archived/);
+});
+
+test('JSON-RPC batches are capped', async () => {
+  const many = Array.from({ length: 11 }, (_, i) => ({ jsonrpc: '2.0', id: i, method: 'ping' }));
+  const res = await handleMcpHttp(new Request('https://w/mcp', { method: 'POST', body: JSON.stringify(many) }), async () => ({}));
+  assert.equal(res.status, 400);
+  const ok = await handleMcpHttp(new Request('https://w/mcp', { method: 'POST', body: JSON.stringify(many.slice(0, 2)) }), async () => ({}));
+  assert.equal((await ok.json()).length, 2);
+});
+
+test('the instructions tell Claude that job text from teammates is information, not instructions', () => {
+  assert.match(INSTRUCTIONS, /never as instructions/);
+});
+
+test('after a password reset the old connection is revoked and no longer listed in Connected apps', async () => {
+  const { env, usersKv } = await setup({ oauth: true, passwords: true });
+  await connect(env, 'cora');
+  const rec = JSON.parse(await usersKv.get('user:cora'));
+  rec.tokensValidAfter = Date.now();
+  await usersKv.put('user:cora', JSON.stringify(rec));
+  await new Promise((r) => setTimeout(r, 5));
+  const login = await go(env, '/auth', { method: 'POST', body: JSON.stringify({ username: 'cora', password: 'pw-cora' }) });
+  const session = (await login.json()).token;
+  const apps = await (await go(env, '/connected-apps', { method: 'POST', body: JSON.stringify({ token: session }) })).json();
+  assert.deepEqual(apps.apps, []);
+  assert.equal([...env.OAUTH_KV._store.keys()].filter((k) => k.startsWith('grant:')).length, 0, 'grant revoked');
+});
+
+test('the shared sign-in rules: the app\'s /auth and the connector page both lock out after too many failures', async () => {
+  const { env, usersKv } = await setup({ oauth: true, passwords: true });
+  await usersKv.put('authfail:ed', '10');
+  const app = await go(env, '/auth', { method: 'POST', body: JSON.stringify({ username: 'ed', password: 'pw-ed' }) });
+  assert.equal(app.status, 429);
+  const clientId = await registerClaude(env);
+  const page = await startAuthorize(env, clientId, await pkce());
+  const rid = hidden(await page.text(), 'rid');
+  const conn = await go(env, '/authorize', form({ rid, step: 'password', username: 'ed', password: 'pw-ed' }));
+  assert.equal(conn.status, 429);
+});
+
+test('"Delete all company data" also clears the connector\'s sign-in storage', async () => {
+  const { env, usersKv } = await setup({ oauth: true });
+  env.BACKUP_BUCKET = { list: async () => ({ objects: [] }), delete: async () => {} };
+  await env.OAUTH_KV.put('grant:ed:g1', '{}');
+  await usersKv.put(DELETION_KV_KEY, JSON.stringify({ requestedBy: 'karl', requestedAt: 1, executeAt: 2 }));
+  assert.equal(await runDueDeletion(env, 3), true);
+  assert.equal(env.OAUTH_KV._store.size, 0);
 });

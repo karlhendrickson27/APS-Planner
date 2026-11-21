@@ -1,8 +1,9 @@
 // --- CLAUDE CONNECTOR: the /mcp endpoint ---
 // Reached only with a valid access token: the OAuth library (oauth.ts)
 // checks it and hands over the grant's props in ctx.props. On every call
-// the account is loaded fresh, so removing someone, resetting their
-// password, or changing their role or project applies at once.
+// the grant and the account are loaded fresh, so a Disconnect, removing
+// someone, resetting their password, or changing their role or project
+// applies on the next call (as soon as KV has the change, usually at once).
 import { getUser } from '../users.ts';
 import { getRoomStub } from '../room-stub.ts';
 import { getMaintenanceStatus } from '../maintenance.ts';
@@ -79,10 +80,27 @@ function invalidToken(origin: string, description: string): Response {
   });
 }
 
-// Access tokens look like "<userId>:<grantId>:<secret>".
-export function grantIdFromToken(token: unknown): string {
+// Access tokens look like "<userId>:<grantId>:<secret>", and the grant is
+// stored as "grant:<userId>:<grantId>". Both are the OAuth library's own
+// formats (checked against 1.2.4, which package.json pins exactly);
+// re-check them when upgrading it.
+export function tokenParts(token: unknown): { userId: string; grantId: string } {
   const parts = typeof token === 'string' ? token.split(':') : [];
-  return parts.length === 3 ? parts[1] : '';
+  return parts.length === 3 ? { userId: parts[0], grantId: parts[1] } : { userId: '', grantId: '' };
+}
+export function grantIdFromToken(token: unknown): string {
+  return tokenParts(token).grantId;
+}
+
+// Disconnect deletes the grant at once, but the library finds the grant's
+// access tokens with a KV list, which can lag; checking the grant itself on
+// every call makes Disconnect take effect on the next call (within KV's own
+// propagation, usually immediate, at most about a minute).
+async function grantStillExists(env: Env, token: unknown): Promise<boolean> {
+  const kv = (env as unknown as { OAUTH_KV?: KVNamespace }).OAUTH_KV;
+  const { userId, grantId } = tokenParts(token);
+  if (!kv || !userId || !grantId) return false;
+  return (await kv.get('grant:' + userId + ':' + grantId)) !== null;
 }
 
 async function noteLastUsed(env: Env, grantId: string, now: number): Promise<void> {
@@ -99,9 +117,16 @@ async function noteLastUsed(env: Env, grantId: string, now: number): Promise<voi
 export const mcpApiHandler = {
   async fetch(request: Request, env: Env, ctx: ConnectorCtx): Promise<Response> {
     const origin = new URL(request.url).origin;
-    const user = await currentConnectorUser(env, ctx.props);
+    const token = ctx.auth && ctx.auth.token;
+    let user: McpUser | null;
+    try {
+      user = (await grantStillExists(env, token)) ? await currentConnectorUser(env, ctx.props) : null;
+    } catch (e) {
+      console.error('Connector: account check failed:', e);
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'TeamSync couldn\'t check your account just now. Try again in a moment.' } }), { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5' } });
+    }
     if (!user) return invalidToken(origin, 'This TeamSync connection is no longer valid. Connect again.');
-    const used = noteLastUsed(env, grantIdFromToken(ctx.auth && ctx.auth.token), Date.now());
+    const used = noteLastUsed(env, grantIdFromToken(token), Date.now());
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(used); else await used;
     return handleMcpHttp(request, async () => toolContext(env, user));
   },

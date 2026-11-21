@@ -446,42 +446,79 @@ export class ApsRoom {
   // to every connection. `onAck` runs exactly where the WebSocket path has
   // always sent its ack: after the save, before the broadcast.
   async applyAsUser(msg: RoomMessage, attachment: RoomAttachment | null, onAck?: (ack: NonNullable<ApplyAsUserResult['ack']>) => void): Promise<ApplyAsUserResult> {
+    return this.commitAsUser([msg], attachment, { onAck });
+  }
+
+  // The body of applyAsUser(), for one message or several saved together.
+  // Each message is checked and run through the reducer on a working copy;
+  // if any is refused, nothing is saved. Otherwise the whole result is
+  // persisted once, audited once and broadcast once — so a connector write
+  // of "job + card + activity line" can't land half-way, and open apps get
+  // it in one delta. For a single message this is exactly the WebSocket
+  // path's long-standing behavior.
+  //   opts.expect       honor each message's `expect` precondition (the
+  //                     connector only; see applyMcpMessages())
+  //   opts.requireAll   refuse the whole commit if any message would change
+  //                     nothing (the connector reports that as not saved)
+  async commitAsUser(msgs: McpMessage[], attachment: RoomAttachment | null, opts: { onAck?: (ack: NonNullable<ApplyAsUserResult['ack']>) => void; expect?: boolean; requireAll?: boolean } = {}): Promise<ApplyAsUserResult> {
     const roomState = await this.loadRoomState();
-    const requiredTier = msg && MESSAGE_TIER_REQUIREMENTS[msg.type];
-    if (requiredTier && (!attachment || !tierAtLeast(attachment.role, requiredTier))) {
-      return { ok: false, changed: false, error: 'Forbidden: requires ' + requiredTier + ' or higher' };
-    }
-    // 'admin' always bypasses project scoping, same as every other project-
-    // restriction check in this app (see the client's switchProject()/
-    // enforceProjectScopeForRole() in src/app/project.ts) — an admin account
-    // can have a stored assignedProjectId left over from before being
-    // promoted (the client already ignores it for role==='admin'), and this
-    // check was missing that same exemption, incorrectly blocking an
-    // unrestricted admin's own cross-project writes (e.g. linking a job to
-    // the other project — see the client's linkJobs(), also in
-    // src/app/project.ts, which deliberately writes to BOTH fixed projects
-    // for exactly this feature).
-    // Only an admin can start a new project (any message naming a project
-    // the room doesn't have yet would otherwise create it).
-    if (msg && typeof msg.projectId === 'string' && msg.type !== 'removeProject' && attachment && attachment.role !== 'admin' && roomState.projects && Object.keys(roomState.projects).length && !roomState.projects[msg.projectId]) {
-      return { ok: false, changed: false, error: 'Forbidden: only an admin can add a project' };
-    }
-    if (msg && msg.projectId && attachment && attachment.role !== 'admin' && attachment.assignedProjectId && msg.projectId !== attachment.assignedProjectId) {
-      return { ok: false, changed: false, error: 'Forbidden: outside your assigned project' };
-    }
-    if (msg && msg.type === 'upsertProjectBatch' && attachment) {
-      msg = Object.assign({ type: msg.type }, filterUpsertProjectBatchByTier(msg as unknown as UpsertProjectBatchMessage, roomState.projects[msg.projectId as string], attachment.role)) as RoomMessage;
+    let working = roomState;
+    let anyChanged = false;
+    let lastAck: ApplyAsUserResult['ack'];
+    for (const original of msgs) {
+      let msg = original as RoomMessage;
+      if (opts.expect && original && original.expect) {
+        const { expect, ...rest } = original;
+        msg = rest as RoomMessage;
+        const project = working.projects[expect.projectId];
+        const job = project && project.jobs && Object.prototype.hasOwnProperty.call(project.jobs, expect.jobId) ? project.jobs[expect.jobId] : undefined;
+        const stale = expect.absent
+          ? !!job || !!(project && project.deletedIds && project.deletedIds[expect.jobId])
+          : (!job || (job.updatedAt || 0) !== (expect.updatedAt || 0));
+        if (stale) return { ok: false, changed: false, rejected: { reason: 'stale' } };
+      }
+      const requiredTier = msg && MESSAGE_TIER_REQUIREMENTS[msg.type];
+      if (requiredTier && (!attachment || !tierAtLeast(attachment.role, requiredTier))) {
+        return { ok: false, changed: false, error: 'Forbidden: requires ' + requiredTier + ' or higher' };
+      }
+      // 'admin' always bypasses project scoping, same as every other project-
+      // restriction check in this app (see the client's switchProject()/
+      // enforceProjectScopeForRole() in src/app/project.ts) — an admin account
+      // can have a stored assignedProjectId left over from before being
+      // promoted (the client already ignores it for role==='admin'), and this
+      // check was missing that same exemption, incorrectly blocking an
+      // unrestricted admin's own cross-project writes (e.g. linking a job to
+      // the other project — see the client's linkJobs(), also in
+      // src/app/project.ts, which deliberately writes to BOTH fixed projects
+      // for exactly this feature).
+      // Only an admin can start a new project (any message naming a project
+      // the room doesn't have yet would otherwise create it).
+      if (msg && typeof msg.projectId === 'string' && msg.type !== 'removeProject' && attachment && attachment.role !== 'admin' && working.projects && Object.keys(working.projects).length && !working.projects[msg.projectId]) {
+        return { ok: false, changed: false, error: 'Forbidden: only an admin can add a project' };
+      }
+      if (msg && msg.projectId && attachment && attachment.role !== 'admin' && attachment.assignedProjectId && msg.projectId !== attachment.assignedProjectId) {
+        return { ok: false, changed: false, error: 'Forbidden: outside your assigned project' };
+      }
+      if (msg && msg.type === 'upsertProjectBatch' && attachment) {
+        msg = Object.assign({ type: msg.type }, filterUpsertProjectBatchByTier(msg as unknown as UpsertProjectBatchMessage, working.projects[msg.projectId as string], attachment.role)) as RoomMessage;
+      }
+
+      const result = applyMessage(working, msg, attachment);
+
+      if (result.error) {
+        return { ok: false, changed: false, error: result.error };
+      }
+      if (result.rejected) {
+        return { ok: false, changed: false, rejected: result.rejected };
+      }
+      if (!result.changed && opts.requireAll) {
+        return { ok: false, changed: false, error: 'Not saved: ' + msg.type + ' changed nothing' };
+      }
+      if (result.changed) { working = result.state; anyChanged = true; }
+      lastAck = result.ack;
     }
 
-    const result = applyMessage(roomState, msg, attachment);
-
-    if (result.error) {
-      return { ok: false, changed: false, error: result.error };
-    }
-    if (result.rejected) {
-      return { ok: false, changed: false, rejected: result.rejected };
-    }
-    if (result.changed) {
+    if (anyChanged) {
       // Persist BEFORE acking: the client's pendingWrites/
       // armStuckWriteWatch() (src/sync/outbound.ts) treats an ack as "the
       // server has safely stored this" and clears its own retry tracking
@@ -493,7 +530,7 @@ export class ApsRoom {
       // and the client gets an error (not silence) so its own retry path
       // — the actual safety net — has something to act on.
       const previousState = this.roomState;
-      this.roomState = result.state;
+      this.roomState = working;
       try {
         await this.persist(previousState);
       } catch (e) {
@@ -509,53 +546,40 @@ export class ApsRoom {
         this.appendAudit(describeChange(previousState as RoomState, this.roomState as RoomState, saved, { user: attachment.username, role: attachment.role, ip: attachment.ip, via: attachment.via }, Date.now()))
           .catch((e) => console.error('Audit write failed:', e));
       }
-      if (result.ack && onAck) onAck(result.ack);
+      if (lastAck && opts.onAck) opts.onAck(lastAck);
       this.broadcastChange(previousState as RoomState, this.roomState as RoomState);
-      return { ok: true, changed: true, ack: result.ack };
+      return { ok: true, changed: true, ack: lastAck };
     }
-    if (result.ack && onAck) onAck(result.ack);
-    return { ok: true, changed: false, ack: result.ack };
+    if (lastAck && opts.onAck) opts.onAck(lastAck);
+    return { ok: true, changed: false, ack: lastAck };
   }
 
   // ---- Claude connector (worker/src/mcp/) ----
-  // Writes allowed per person per hour through the connector. Counted per
-  // tool call, not per message, in this object's own storage.
+  // Saved connector writes allowed per person per hour, counted in this
+  // object's own storage. A refused or unchanged write doesn't count.
   static MCP_WRITES_PER_HOUR = 120;
 
-  async takeMcpWriteSlot(username: string, now: number): Promise<boolean> {
-    const key = MCP_RATE_PREFIX + username;
-    const rec = (await this.state.storage.get<{ start: number; count: number }>(key)) || { start: now, count: 0 };
-    const fresh = now - rec.start >= 60 * 60 * 1000 ? { start: now, count: 0 } : rec;
-    if (fresh.count >= ApsRoom.MCP_WRITES_PER_HOUR) return false;
-    fresh.count++;
-    await this.state.storage.put(key, fresh);
-    return true;
+  async mcpWriteCount(username: string, now: number): Promise<{ start: number; count: number }> {
+    const rec = await this.state.storage.get<{ start: number; count: number }>(MCP_RATE_PREFIX + username);
+    return !rec || now - rec.start >= 60 * 60 * 1000 ? { start: now, count: 0 } : rec;
   }
 
-  // Applies a connector write: each message through applyAsUser(), in
-  // order, stopping at the first one that fails. A message may carry
-  // `expect` — the job's updatedAt as the connector last read it (or
-  // `absent: true` for a job it is creating) — and is refused as stale if
-  // the job has moved on since, so a read-modify-write can never quietly
-  // undo someone else's edit made in between. Runs without awaiting
-  // anything between the check and the save, so nothing can slip in.
-  async applyMcpMessages(attachment: RoomAttachment, messages: McpMessage[]): Promise<{ results: ApplyAsUserResult[]; limited?: boolean }> {
-    if (!(await this.takeMcpWriteSlot(attachment.username, Date.now()))) return { results: [], limited: true };
-    const results: ApplyAsUserResult[] = [];
-    for (const m of messages) {
-      const { expect, ...msg } = m;
-      if (expect) {
-        const state = await this.loadRoomState();
-        const project = state.projects[expect.projectId];
-        const job = project && project.jobs ? project.jobs[expect.jobId] : undefined;
-        const stale = expect.absent ? !!job || !!(project && project.deletedIds && project.deletedIds[expect.jobId]) : (!job || (job.updatedAt || 0) !== (expect.updatedAt || 0));
-        if (stale) { results.push({ ok: false, changed: false, rejected: { reason: 'stale' } }); break; }
-      }
-      const r = await this.applyAsUser(msg as RoomMessage, attachment);
-      results.push(r);
-      if (!r.ok) break;
-    }
-    return { results };
+  // Applies one connector write: its messages saved together through
+  // commitAsUser() (all or nothing). A message may carry `expect` — the
+  // job's updatedAt as the connector last read it (or `absent: true` for a
+  // job it is creating) — and the whole write is refused as stale if the
+  // job has moved on since, so a read-modify-write can never quietly undo
+  // someone else's edit made in between. The check and the save are safe
+  // from interleaving: between them this object only awaits its own storage,
+  // and a Durable Object delivers no other request or WebSocket message
+  // while a storage operation is in flight (its input gate).
+  async applyMcpMessages(attachment: RoomAttachment, messages: McpMessage[]): Promise<{ result?: ApplyAsUserResult; limited?: boolean }> {
+    const now = Date.now();
+    const rate = await this.mcpWriteCount(attachment.username, now);
+    if (rate.count >= ApsRoom.MCP_WRITES_PER_HOUR) return { limited: true };
+    const result = await this.commitAsUser(messages, attachment, { expect: true, requireAll: true });
+    if (result.changed) await this.state.storage.put(MCP_RATE_PREFIX + attachment.username, { start: rate.start, count: rate.count + 1 });
+    return { result };
   }
 
   // Two connections can have different assignedProjectId scoping (see
