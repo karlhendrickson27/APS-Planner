@@ -42,17 +42,15 @@ import { handleMaintenanceStatus, handleSetMaintenanceStatus } from './maintenan
 import { handleAuditExport, handleDataExport, handleDeletionStatus, handleDeletionSchedule, handleDeletionCancel, runDueDeletion } from './compliance.ts';
 import { handleCalendarFeedLink, handleCalendarFeed } from './calendar-feed.ts';
 import { handleNotificationState } from './notifications.ts';
+import { handleAuthorize } from './mcp/authorize.ts';
+import { handleConnectedApps } from './mcp/connected-apps.ts';
+import { fetchWithConnector } from './mcp/oauth.ts';
 export { ApsRoom } from './room-do.ts';
 
-// --- WORKER ENTRYPOINTS ---
-export default {
-  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    // A due "delete all our data" request runs here, instead of that run's
-    // backup (see runDueDeletion() in compliance.ts).
-    if (await runDueDeletion(env)) return;
-    await runBackup(env);
-  },
-
+// --- THE ROUTER --- every app route. The Worker's fetch (below) puts the
+// Claude connector's OAuth layer (mcp/oauth.ts) in front of it; that layer
+// answers only its own paths and hands everything else here unchanged.
+const router = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const corsHeaders = {
@@ -241,7 +239,29 @@ export default {
     if (url.pathname === "/attachments/delete" && request.method === "POST") {
       return handleAttachmentDelete(request, env, corsHeaders);
     }
+    // Claude connector (mcp/): the sign-in + consent page Claude opens, and
+    // Settings > Connected apps.
+    if (url.pathname === "/authorize" && (request.method === "GET" || request.method === "POST")) {
+      return handleAuthorize(request, env, ctx);
+    }
+    if (url.pathname === "/connected-apps" && request.method === "POST") {
+      return handleConnectedApps(request, env, corsHeaders);
+    }
 
     return new Response("Not found", { status: 404, headers: corsHeaders });
+  }
+};
+
+// --- WORKER ENTRYPOINTS ---
+export default {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // A due "delete all our data" request runs here, instead of that run's
+    // backup (see runDueDeletion() in compliance.ts).
+    if (await runDueDeletion(env)) return;
+    await runBackup(env);
+  },
+
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return fetchWithConnector(request, env, ctx, router);
   }
 };

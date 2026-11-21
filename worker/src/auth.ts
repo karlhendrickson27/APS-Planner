@@ -27,27 +27,33 @@ import type { UserRecord } from './types.ts';
 export const MFA_TICKET_TTL_MS = 5 * 60 * 1000;
 export const MFA_SETUP_TICKET_TTL_MS = 15 * 60 * 1000;
 
-function failKeys(request: Request, username: string): { user: string; ip: string } {
+export function failKeys(request: Request, username: string): { user: string; ip: string } {
   return { user: "authfail:" + normalizeUsername(username), ip: "authfail-ip:" + (request.headers.get("CF-Connecting-IP") || "unknown") };
 }
 
-async function isLockedOut(env: Env, keys: { user: string; ip: string }): Promise<boolean> {
+export async function isLockedOut(env: Env, keys: { user: string; ip: string }): Promise<boolean> {
   const [userFailures, ipFailures] = await Promise.all([getAuthFailureCount(env, keys.user), getAuthFailureCount(env, keys.ip)]);
   return userFailures >= AUTH_MAX_FAILURES_PER_USERNAME || ipFailures >= AUTH_MAX_FAILURES_PER_IP;
 }
 
-function later(ctx: ExecutionContext | undefined, p: Promise<unknown>): Promise<unknown> | undefined {
+export function later(ctx: ExecutionContext | undefined, p: Promise<unknown>): Promise<unknown> | undefined {
   if (ctx) { ctx.waitUntil(p); return undefined; }
   return p;
 }
 
 // Finishes a sign-in: clears the failure count, records it, and returns
 // the session token. `how` goes in the audit entry's details.
-export async function issueSession(env: Env, request: Request, ctx: ExecutionContext | undefined, user: UserRecord, how: string, corsHeaders: Record<string, string>, extra?: Record<string, unknown>): Promise<Response> {
+// Clears the failure count and records the sign-in. Shared by
+// issueSession() and the Claude connector's sign-in page (mcp/authorize.ts).
+export async function recordSignIn(env: Env, request: Request, ctx: ExecutionContext | undefined, user: UserRecord, how: string): Promise<void> {
   const done = Promise.all([env.USERS_KV.delete(failKeys(request, user.username).user),
     recordAudit(env, { user: user.username, role: user.role, action: 'Signed in', ip: clientIp(request), details: how })]);
   const wait = later(ctx, done);
   if (wait) await wait;
+}
+
+export async function issueSession(env: Env, request: Request, ctx: ExecutionContext | undefined, user: UserRecord, how: string, corsHeaders: Record<string, string>, extra?: Record<string, unknown>): Promise<Response> {
+  await recordSignIn(env, request, ctx, user, how);
   const identity = { username: user.username, displayName: user.displayName, role: user.role, assignedProjectId: user.assignedProjectId || null };
   const token = await signRoomToken(env.ROOM_TOKEN_SECRET, identity);
   return jsonResponse(Object.assign({ token, user: identity }, extra || {}), 200, corsHeaders);

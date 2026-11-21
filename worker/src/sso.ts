@@ -41,6 +41,7 @@ import { recordAudit, clientIp } from './audit.ts';
 import { getUser, putUser, resolveCaller, normalizeEmail, findUserByEmail, setAccountEmail } from './users.ts';
 import { requireAdmin } from './users-admin.ts';
 import { issueSession, resolveTicket } from './auth.ts';
+import type { UserRecord } from './types.ts';
 
 declare global {
   interface Env {
@@ -65,6 +66,15 @@ export const ALLOWED_RETURN_PREFIXES = [
   'https://production27.github.io/APS-Planner/',
 ];
 const LOCAL_RETURN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//;
+
+// The Claude connector's sign-in page (mcp/authorize.ts) on this same
+// Worker: "Sign in with Google" there comes back to it, not to the app.
+export function isConnectorReturn(url: string, selfOrigin: string): boolean {
+  if (typeof url !== 'string' || url.length > 2000) return false;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch (e) { return false; }
+  return parsed.origin === selfOrigin && parsed.pathname === '/authorize';
+}
 
 export function isAllowedReturn(url: string): boolean {
   if (typeof url !== 'string' || url.length > 2000) return false;
@@ -189,7 +199,7 @@ export async function handleSsoConfig(request: Request, env: Env, corsHeaders: R
 
 export async function handleGoogleStart(request: Request, env: Env, url: URL): Promise<Response> {
   const returnUrl = url.searchParams.get('return') || '';
-  if (!isAllowedReturn(returnUrl)) return new Response('Sign-in was started from a page that isn\'t TeamSync.', { status: 400 });
+  if (!isAllowedReturn(returnUrl) && !isConnectorReturn(returnUrl, url.origin)) return new Response('Sign-in was started from a page that isn\'t TeamSync.', { status: 400 });
   const { active, settings } = await googleActive(env);
   if (!active) return backToApp(returnUrl, { sso_error: 'not_enabled' });
   // "Connect Google account": the ticket names the signed-in account.
@@ -289,14 +299,24 @@ export async function handleGoogleCallback(request: Request, env: Env, url: URL,
 export async function handleSsoRedeem(request: Request, env: Env, corsHeaders: Record<string, string>, ctx: ExecutionContext | undefined): Promise<Response> {
   let body: { code?: string };
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid JSON body' }, 400, corsHeaders); }
-  const code = typeof body.code === 'string' ? body.code : '';
-  const raw = code ? await env.USERS_KV.get('sso-code:' + code) : null;
-  if (!raw) return jsonResponse({ error: 'That sign-in has expired — try again.' }, 401, corsHeaders);
-  await env.USERS_KV.delete('sso-code:' + code);
+  const redeemed = await redeemSsoCode(env, body.code);
+  if (redeemed === 'expired') return jsonResponse({ error: 'That sign-in has expired — try again.' }, 401, corsHeaders);
+  if (redeemed === 'changed') return jsonResponse({ error: 'That account has changed — try again.' }, 401, corsHeaders);
+  return issueSession(env, request, ctx, redeemed.user, 'Google (' + redeemed.email + ')', corsHeaders);
+}
+
+// Swaps a one-time code from the Google callback (single use) for the
+// account it was issued to, re-checked against the account as it is now.
+// Shared by /sso/redeem and the Claude connector's sign-in page.
+export async function redeemSsoCode(env: Env, code: unknown): Promise<{ user: UserRecord; email: string } | 'expired' | 'changed'> {
+  const c = typeof code === 'string' ? code : '';
+  const raw = c ? await env.USERS_KV.get('sso-code:' + c) : null;
+  if (!raw) return 'expired';
+  await env.USERS_KV.delete('sso-code:' + c);
   const { username, email } = JSON.parse(raw) as { username: string; email: string };
   const user = await getUser(env, username);
-  if (!user || normalizeEmail(user.email) !== email || !user.emailConfirmed) return jsonResponse({ error: 'That account has changed — try again.' }, 401, corsHeaders);
-  return issueSession(env, request, ctx, user, 'Google (' + email + ')', corsHeaders);
+  if (!user || normalizeEmail(user.email) !== email || !user.emailConfirmed) return 'changed';
+  return { user, email };
 }
 
 // POST {token} -> {ticket}: starts "Connect Google account" for the

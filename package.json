@@ -4,7 +4,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:worker": "cd worker && npx wrangler types && npx tsc --noEmit",
     "test": "playwright test --config=tests/playwright.config.js",
-    "test:worker": "node --test worker/src/*.test.mjs"
+    "test:worker": "node --import ./worker/test-setup.mjs --test worker/src/*.test.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -14,6 +14,7 @@
     "wrangler": "^4.125.0"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.2.4",
     "preact": "10.29.8",
     "qrcode-generator": "2.0.4",
     "reconnecting-websocket": "4.4.0"

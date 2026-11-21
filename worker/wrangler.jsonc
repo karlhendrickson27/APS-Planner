@@ -37,7 +37,11 @@
     { "binding": "BACKUP_BUCKET", "bucket_name": "aps-planner-backups" }
   ],
   "kv_namespaces": [
-    { "binding": "USERS_KV", "id": "1bfbded278d54b2ea1789fe4d8cceb2f" }
+    { "binding": "USERS_KV", "id": "1bfbded278d54b2ea1789fe4d8cceb2f" },
+    // Claude connector (src/mcp/oauth.ts): OAuth clients, grants and tokens,
+    // stored encrypted by @cloudflare/workers-oauth-provider. Create it once
+    // with `npx wrangler kv namespace create OAUTH_KV` and paste the id here.
+    { "binding": "OAUTH_KV", "id": "REPLACE_WITH_OAUTH_KV_ID" }
   ],
 
   // Runs scheduled() in index.ts (which calls runBackup() — the CURRENT,
