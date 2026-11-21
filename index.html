@@ -266,6 +266,7 @@
   .help-close { border: 0; background: none; font-size: 24px; line-height: 1; color: var(--text-light); cursor: pointer; width: 36px; height: 36px; border-radius: 50%; }
   .help-close:hover { background: var(--chrome-hover); color: var(--text); }
   .help-body { flex: 1; overflow-y: auto; padding: 0 var(--s-3) var(--s-4); }
+  .help-code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: var(--t-xs); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; overflow-wrap: anywhere; user-select: all; }
   .help-tour {
     display: flex; align-items: center; gap: var(--s-3); width: 100%; margin: 0 0 var(--s-2); padding: var(--s-3);
     border: 1px solid var(--border); border-radius: 12px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
@@ -3043,6 +3044,12 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   .cal-feed-stages .cal-feed-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   .cal-feed-stages li span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-feed-stages .btn { padding: var(--s-1) var(--s-3); font-size: var(--t-xs); }
+  .connected-apps-list { list-style: none; margin: var(--s-3) 0 0; padding: 0; display: grid; gap: var(--s-2); }
+  .connected-apps-list li { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2-5) var(--s-3); border: 1px solid var(--border); border-radius: 8px; }
+  .connected-app-text { flex: 1; min-width: 0; }
+  .connected-app-name { font-weight: 600; font-size: var(--t-base); }
+  .connected-app-meta { font-size: var(--t-sm); color: var(--text-light); margin-top: 2px; }
+  .connected-apps-list .btn { flex: none; padding: var(--s-1) var(--s-3); font-size: var(--t-xs); }
   .cal-feed-row { display: flex; gap: var(--s-2); margin: var(--s-2) 0 var(--s-4); }
   .cal-feed-row input { flex: 1; min-width: 0; font: inherit; font-size: var(--t-sm); color: var(--text); padding: var(--s-1-5) var(--s-2); border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
   .sec-section { border-top: 1px solid var(--border); padding: var(--s-3) 0 var(--s-4); }
@@ -3172,6 +3179,9 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   .activity-log-time { color:var(--text-light); font-size: var(--t-xs); white-space:nowrap; min-width:70px; text-align:right; flex-shrink:0; }
   .activity-log-who { font-weight:700; color:var(--primary-light); }
   body.dark-mode .activity-log-who { color: var(--primary-ondark); }
+  /* "via Claude" after a name: changes and comments made through the Claude
+     connector (worker/src/mcp/). */
+  .via-claude-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: var(--t-xs); font-weight: 600; line-height: 1.6; vertical-align: 1px; color: var(--text-light); background: var(--bg); border: 1px solid var(--border); }
   .activity-log-what { color:var(--text); }
   .activity-log-empty { padding: var(--s-5); text-align:center; color:var(--text-faint); font-size: var(--t-base); }
   body.dark-mode .activity-log-item { border-bottom-color:var(--border); }
@@ -4071,6 +4081,7 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
   <button type="button" class="settings-dropdown-item" id="changePasswordBtn"><svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px;margin-right: var(--s-0-75)" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="10.5" width="14" height="9.5" rx="1.5" fill="#f0ad4e"/><path d="M8 10.5V7a4 4 0 018 0v3.5" stroke="#8a5a00" stroke-width="1.8" fill="none"/><circle cx="12" cy="14.5" r="1.6" fill="#8a5a00"/></svg> Change My Password</button>
   <button type="button" class="settings-dropdown-item" id="myEmailBtn"><svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px;margin-right: var(--s-0-75)" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2" fill="#3949ab"/><path d="M4 7l8 6 8-6" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg> My email</button>
   <button type="button" class="settings-dropdown-item" id="twoStepBtn"><svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px;margin-right: var(--s-0-75)" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="2.5" width="12" height="19" rx="2.5" fill="#3949ab"/><rect x="8" y="5" width="8" height="12" rx="1" fill="#fff"/><path d="M10 11l1.5 1.5L14.5 9" stroke="#3949ab" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg> Two-step verification</button>
+  <button type="button" class="settings-dropdown-item" id="connectedAppsBtn" title="Apps like Claude that you've let use TeamSync as you"><svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px;margin-right: var(--s-0-75)" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="2.5" y="8" width="8" height="8" rx="2" fill="#3949ab"/><rect x="13.5" y="8" width="8" height="8" rx="2" fill="#90a4ae"/><path d="M10.5 12h3" stroke="#3949ab" stroke-width="2" stroke-linecap="round"/></svg> Connected apps</button>
   <div class="settings-dropdown-divider"></div>
   <!-- Moved down here from the top of the menu, and grouped with Log Out —
        both leave the context you're currently in. It used to be the very
@@ -4866,6 +4877,20 @@ font-size: var(--t-base); font-weight: 700; cursor: pointer; transition: all 0.1
       <button type="button" class="btn btn-secondary" id="calFeedResetBtn">Reset link</button>
       <button type="button" class="btn btn-secondary" id="calFeedOffBtn">Turn off</button>
       <button type="button" class="btn btn-secondary" id="calFeedCloseBtn" data-modal-close>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONNECTED APPS — see src/app/connected-apps.ts and docs/claude-connector.md -->
+<div class="modal-overlay" id="connectedAppsModal">
+  <div class="modal-box sec-modal" role="dialog" aria-modal="true" aria-labelledby="connectedAppsTitle">
+    <h4 id="connectedAppsTitle"><svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px;margin-right: var(--s-0-75)" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="2.5" y="8" width="8" height="8" rx="2" fill="#3949ab"/><rect x="13.5" y="8" width="8" height="8" rx="2" fill="#90a4ae"/><path d="M10.5 12h3" stroke="#3949ab" stroke-width="2" stroke-linecap="round"/></svg> Connected apps</h4>
+    <p>Apps you've let use TeamSync as you. They can do only what your role allows, and their changes show in the activity log as made “via Claude”.</p>
+    <p id="connectedAppsLoading">Loading…</p>
+    <p id="connectedAppsEmpty" hidden>Nothing is connected. To use TeamSync from Claude, see <b>Help › Using TeamSync with Claude</b>.</p>
+    <ul class="connected-apps-list" id="connectedAppsList" hidden></ul>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" id="connectedAppsCloseBtn" data-modal-close>Close</button>
     </div>
   </div>
 </div>

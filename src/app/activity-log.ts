@@ -139,7 +139,10 @@ export function renderActivityLogSidebar(): void {
 
   const html = unique.slice(0, 50).map(function (item) {
     const when = getLogProp(item, 'when') || Date.now();
-    const who = escapeHtml(getLogProp(item, 'who') || 'Someone');
+    // "Name (via Claude)" from the Claude connector: the name plus a small tag.
+    const rawWho = String(getLogProp(item, 'who') || 'Someone');
+    const viaClaude = / \(via Claude\)$/.test(rawWho);
+    const who = escapeHtml(viaClaude ? rawWho.replace(/ \(via Claude\)$/, '') : rawWho) + (viaClaude ? ' <span class="via-claude-tag">via Claude</span>' : '');
     const what = escapeHtml(getLogProp(item, 'what') || '');
     return '<div class="activity-log-item">' +
       '<div class="activity-log-time">' + timeAgo(when) + '</div>' +

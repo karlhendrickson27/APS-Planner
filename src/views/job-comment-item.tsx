@@ -62,6 +62,20 @@ export interface JobChatItemProps {
   onPostReply: () => void;
 }
 
+// Comments posted through the Claude connector carry the author's name plus
+// " (via Claude)" (worker/src/mcp/). Shown as the name with a small tag so
+// the name itself doesn't get cut off.
+const VIA_CLAUDE = / \(via Claude\)$/;
+function Author({ name }: { name: string }) {
+  const via = VIA_CLAUDE.test(name);
+  return (
+    <span class="job-comment-author" title={name}>
+      {via ? name.replace(VIA_CLAUDE, '') : name}
+      {via ? <span class="via-claude-tag">via Claude</span> : null}
+    </span>
+  );
+}
+
 function onEnterOrSpace(fn: (e: KeyboardEvent) => void) {
   return (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e); } };
 }
@@ -70,7 +84,7 @@ function ReplyItem(p: JobChatReply) {
   return (
     <div class="job-comment-reply-item">
       <div class="job-comment-meta">
-        <span class="job-comment-author" title={p.author}>{p.author}</span>
+        <Author name={p.author} />
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <span class="job-comment-when">{p.whenLabel}</span>
           <button class="job-comment-delete" data-min-tier="commenter" title="Delete reply" onClick={p.onDelete}>×</button>
@@ -93,7 +107,7 @@ function JobChatItem(p: JobChatItemProps) {
             </span>
           ) : null}
           {p.important ? <span class="job-comment-important-badge" title="Marked important">●</span> : null}
-          <span class="job-comment-author" title={p.author}>{p.author}</span>
+          <Author name={p.author} />
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <span class="job-comment-when">{p.whenLabel}</span>

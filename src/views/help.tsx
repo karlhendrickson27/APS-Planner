@@ -165,6 +165,21 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: 'claude',
+    title: 'Using TeamSync with Claude',
+    body: () => (
+      <>
+        <p>Claude (at claude.ai) can look at your schedule and, if your role allows it, move task dates, write task notes, comment on jobs and (project admins) add jobs. It works as you, with your role, and can't delete or archive anything or change people or settings.</p>
+        <ul>
+          <li><b>Connect it once:</b> in Claude, open <b>Settings › Connectors › Add custom connector</b> and paste <code class="help-code">{API_BASE_URL + 'mcp'}</code>. Sign in with your usual TeamSync login and click <b>Allow</b>.</li>
+          <li><b>Then just ask</b>, for example: “List my TeamSync projects, then show this week's Highland tasks.” Before changing anything, Claude shows you what it will change; say yes to save it.</li>
+          <li>What Claude changes shows up for everyone right away, and the activity log shows it as made by you “(via Claude)”.</li>
+          <li><b>To stop it:</b> your initials › <b>Connected apps</b> › <b>Disconnect</b>.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
     id: 'roles',
     title: 'Who can do what',
     body: () => (

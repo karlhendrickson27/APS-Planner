@@ -29,6 +29,7 @@ import { openTwoStepModal, closeTwoStepModal, startTwoStepSetup, confirmTwoStepS
 import { saveGoogleSettings } from './sso-settings';
 import { openAccountEmailModal, closeAccountEmailModal, saveMyEmail, connectGoogleAccount } from './account-email';
 import { openCalendarFeedModal, closeCalendarFeedModal, copyCalendarFeedUrl, resetCalendarFeed, turnOffCalendarFeed, createCalendarFeed } from './calendar-feed';
+import { openConnectedAppsModal, closeConnectedAppsModal } from './connected-apps';
 import { toggleHelp } from '../views/help';
 
 declare global {
@@ -170,6 +171,8 @@ export function initStaticEventListeners(): void {
   on('myEmailGoogleBtn', () => connectGoogleAccount());
   on('twoStepBtn', () => { closeSettingsMenu(); openTwoStepModal(); });
   on('mfaCloseBtn', () => closeTwoStepModal());
+  on('connectedAppsBtn', () => { closeSettingsMenu(); openConnectedAppsModal(); });
+  on('connectedAppsCloseBtn', () => closeConnectedAppsModal());
   on('mfaStartBtn', () => startTwoStepSetup());
   on('mfaEnableBtn', () => confirmTwoStepSetup());
   on('mfaNewCodesBtn', () => makeNewRecoveryCodes());
