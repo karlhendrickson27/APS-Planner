@@ -57,7 +57,7 @@ function itemName(kind: string, item: any): string {
 
 // Turns one saved write into audit rows. prev/next are the room before and
 // after; delta is computeRoomDelta(prev, next).
-export function describeChange(prev: RoomState, next: RoomState, delta: RoomDelta, who: { user: string; role?: string; ip?: string }, at: number): AuditEntry[] {
+export function describeChange(prev: RoomState, next: RoomState, delta: RoomDelta, who: { user: string; role?: string; ip?: string; via?: string }, at: number): AuditEntry[] {
   const rows: AuditEntry[] = [];
   const base = { at: at, user: who.user, role: who.role, ip: who.ip };
   Object.keys(delta.projects).forEach(function (pid) {
@@ -91,6 +91,12 @@ export function describeChange(prev: RoomState, next: RoomState, delta: RoomDelt
       else row(FIELD_LABEL[field]);
     });
   });
+  // A change made through an integration (the Claude connector) says so on
+  // every row, next to the person it was made for.
+  if (who.via) {
+    const note = "via " + who.via;
+    rows.forEach(function (r) { r.details = r.details ? r.details + " (" + note + ")" : note; });
+  }
   if (rows.length > AUDIT_MAX_ROWS_PER_WRITE) {
     const extra = rows.length - AUDIT_MAX_ROWS_PER_WRITE + 1;
     const kept = rows.slice(0, AUDIT_MAX_ROWS_PER_WRITE - 1);
@@ -134,6 +140,7 @@ export const ADMIN_NOTICE_ACTIONS = new Set([
   'Restored from backup', 'Exported all company data',
   'Scheduled deletion of all company data', 'Cancelled deletion of all company data',
   'Turned on maintenance mode', 'Turned off maintenance mode',
+  'Connected Claude', 'Disconnected Claude',
 ]);
 
 async function recordAdminNotice(env: Env, entry: AuditEntry): Promise<void> {

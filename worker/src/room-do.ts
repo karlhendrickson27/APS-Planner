@@ -49,6 +49,37 @@ interface RoomAttachment extends Attachment {
   proto?: number;
   // The client's address at connect time, for the audit trail.
   ip?: string;
+  // Set for writes that arrive through an integration rather than the app
+  // ("Claude" for the connector, see worker/src/mcp/); added to each audit row.
+  via?: string;
+}
+
+export interface ApplyAsUserResult {
+  ok: boolean;
+  changed: boolean;
+  error?: string;
+  rejected?: { reason: string; currentFieldRevision?: number };
+  ack?: { type: string; msgId?: number; newFieldRevision?: number };
+}
+
+// A connector write: an ordinary room message plus an optional
+// precondition on the job it edits (see applyMcpMessages()).
+export type McpMessage = RoomMessage & { expect?: { projectId: string; jobId: string; updatedAt?: number; absent?: boolean } };
+
+const MCP_RATE_PREFIX = 'mcp-rate|';
+
+// What /internal/mcp-read sends back: the caller's scoped view, minus the
+// parts the connector never reads and that can be large (logo images,
+// calendar events, the activity log, tombstones).
+export function slimForConnector(state: RoomState): RoomState {
+  const out: RoomState = { projects: {} };
+  Object.keys(state.projects || {}).forEach((pid) => {
+    const p = state.projects[pid];
+    const header = Object.assign({}, p.header || {});
+    delete header.logo;
+    out.projects[pid] = Object.assign({}, p, { header, calendarEvents: {}, activityLog: [], deletedIds: {} });
+  });
+  return out;
 }
 
 // Durable Object storage accepts at most 128 keys per put/delete call.
@@ -255,6 +286,25 @@ export class ApsRoom {
       return new Response(JSON.stringify({ success: true, kicked }), { headers: { 'Content-Type': 'application/json' } });
     }
 
+    // The Claude connector (worker/src/mcp/tools.ts). Like every route
+    // above, reachable only through this object's stub: the Worker forwards
+    // nothing from outside except the /room WebSocket upgrade. The Worker
+    // builds `attachment` from the account as it is right now (getUser).
+    if (url.pathname === '/internal/mcp-read' && request.method === 'POST') {
+      let body: { attachment?: RoomAttachment };
+      try { body = await request.json(); } catch (e) { return new Response('bad json', { status: 400 }); }
+      if (!body.attachment || typeof body.attachment.username !== 'string') return new Response('missing attachment', { status: 400 });
+      const roomState = await this.loadRoomState();
+      return new Response(JSON.stringify(slimForConnector(filterRoomStateForAttachment(roomState, body.attachment))), { headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.pathname === '/internal/mcp-apply' && request.method === 'POST') {
+      let body: { attachment?: RoomAttachment; messages?: McpMessage[] };
+      try { body = await request.json(); } catch (e) { return new Response('bad json', { status: 400 }); }
+      if (!body.attachment || typeof body.attachment.username !== 'string' || !Array.isArray(body.messages)) return new Response('missing attachment or messages', { status: 400 });
+      const out = await this.applyMcpMessages(body.attachment, body.messages);
+      return new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (request.headers.get('Upgrade') === 'websocket') {
       return this.handleWebSocketUpgrade(request);
     }
@@ -366,8 +416,6 @@ export class ApsRoom {
       return;
     }
 
-    const roomState = await this.loadRoomState();
-
     // Content-write authorization: the token was already verified at
     // connect time (handleWebSocketUpgrade()) and its role/assignedProjectId
     // captured in the WebSocket's own attachment, so no per-message KV
@@ -376,10 +424,32 @@ export class ApsRoom {
     // matching attachment (shouldn't happen post-upgrade, but don't trust it
     // blindly) is treated as unauthorized.
     const attachment = ws.deserializeAttachment() as RoomAttachment | null;
+    const result = await this.applyAsUser(msg, attachment, (ack) => ws.send(JSON.stringify(ack)));
+    if (result.error) {
+      ws.send(JSON.stringify({ type: 'error', msgId: msg && msg.msgId, message: result.error }));
+    } else if (result.rejected) {
+      // The rejecting client applied its edit optimistically (this app has
+      // always worked that way) before finding out the server already had
+      // something newer — send fresh data immediately rather than leaving
+      // their local view wrong until the next unrelated broadcast.
+      ws.send(JSON.stringify(Object.assign({ type: 'rejected', msgId: msg.msgId }, result.rejected)));
+      ws.send(JSON.stringify(Object.assign({ type: 'snapshot' }, filterRoomStateForAttachment(this.roomState as RoomState, attachment))));
+    }
+  }
+
+  // The one commit path for a content write, whoever sends it: the app's
+  // WebSocket (webSocketMessage() above) and the Claude connector
+  // (/internal/mcp-apply below). In order: the tier floor for the message
+  // type, the admin-only new-project rule, the assigned-project check, the
+  // per-item tier filter for batches, the reducer, persist BEFORE acking
+  // (rolled back on failure), the audit rows, the ack, then the broadcast
+  // to every connection. `onAck` runs exactly where the WebSocket path has
+  // always sent its ack: after the save, before the broadcast.
+  async applyAsUser(msg: RoomMessage, attachment: RoomAttachment | null, onAck?: (ack: NonNullable<ApplyAsUserResult['ack']>) => void): Promise<ApplyAsUserResult> {
+    const roomState = await this.loadRoomState();
     const requiredTier = msg && MESSAGE_TIER_REQUIREMENTS[msg.type];
     if (requiredTier && (!attachment || !tierAtLeast(attachment.role, requiredTier))) {
-      ws.send(JSON.stringify({ type: 'error', msgId: msg && msg.msgId, message: 'Forbidden: requires ' + requiredTier + ' or higher' }));
-      return;
+      return { ok: false, changed: false, error: 'Forbidden: requires ' + requiredTier + ' or higher' };
     }
     // 'admin' always bypasses project scoping, same as every other project-
     // restriction check in this app (see the client's switchProject()/
@@ -394,12 +464,10 @@ export class ApsRoom {
     // Only an admin can start a new project (any message naming a project
     // the room doesn't have yet would otherwise create it).
     if (msg && typeof msg.projectId === 'string' && msg.type !== 'removeProject' && attachment && attachment.role !== 'admin' && roomState.projects && Object.keys(roomState.projects).length && !roomState.projects[msg.projectId]) {
-      ws.send(JSON.stringify({ type: 'error', msgId: msg.msgId, message: 'Forbidden: only an admin can add a project' }));
-      return;
+      return { ok: false, changed: false, error: 'Forbidden: only an admin can add a project' };
     }
     if (msg && msg.projectId && attachment && attachment.role !== 'admin' && attachment.assignedProjectId && msg.projectId !== attachment.assignedProjectId) {
-      ws.send(JSON.stringify({ type: 'error', msgId: msg.msgId, message: 'Forbidden: outside your assigned project' }));
-      return;
+      return { ok: false, changed: false, error: 'Forbidden: outside your assigned project' };
     }
     if (msg && msg.type === 'upsertProjectBatch' && attachment) {
       msg = Object.assign({ type: msg.type }, filterUpsertProjectBatchByTier(msg as unknown as UpsertProjectBatchMessage, roomState.projects[msg.projectId as string], attachment.role)) as RoomMessage;
@@ -408,17 +476,10 @@ export class ApsRoom {
     const result = applyMessage(roomState, msg, attachment);
 
     if (result.error) {
-      ws.send(JSON.stringify({ type: 'error', msgId: msg.msgId, message: result.error }));
-      return;
+      return { ok: false, changed: false, error: result.error };
     }
     if (result.rejected) {
-      // The rejecting client applied its edit optimistically (this app has
-      // always worked that way) before finding out the server already had
-      // something newer — send fresh data immediately rather than leaving
-      // their local view wrong until the next unrelated broadcast.
-      ws.send(JSON.stringify(Object.assign({ type: 'rejected', msgId: msg.msgId }, result.rejected)));
-      ws.send(JSON.stringify(Object.assign({ type: 'snapshot' }, filterRoomStateForAttachment(this.roomState as RoomState, attachment))));
-      return;
+      return { ok: false, changed: false, rejected: result.rejected };
     }
     if (result.changed) {
       // Persist BEFORE acking: the client's pendingWrites/
@@ -438,22 +499,63 @@ export class ApsRoom {
       } catch (e) {
         this.roomState = previousState;
         console.error('Failed to persist room state:', e);
-        ws.send(JSON.stringify({ type: 'error', msgId: msg.msgId, message: 'Failed to save — please retry' }));
-        return;
+        return { ok: false, changed: false, error: 'Failed to save — please retry' };
       }
       // Audit rows for what this write actually changed. Not awaited: the
       // runtime holds outgoing messages until storage writes started here
       // have completed, and an audit failure must not fail the edit.
       const saved = computeRoomDelta(previousState as RoomState, this.roomState as RoomState);
       if (saved && attachment) {
-        this.appendAudit(describeChange(previousState as RoomState, this.roomState as RoomState, saved, { user: attachment.username, role: attachment.role, ip: attachment.ip }, Date.now()))
+        this.appendAudit(describeChange(previousState as RoomState, this.roomState as RoomState, saved, { user: attachment.username, role: attachment.role, ip: attachment.ip, via: attachment.via }, Date.now()))
           .catch((e) => console.error('Audit write failed:', e));
       }
-      if (result.ack) ws.send(JSON.stringify(result.ack));
+      if (result.ack && onAck) onAck(result.ack);
       this.broadcastChange(previousState as RoomState, this.roomState as RoomState);
-    } else if (result.ack) {
-      ws.send(JSON.stringify(result.ack));
+      return { ok: true, changed: true, ack: result.ack };
     }
+    if (result.ack && onAck) onAck(result.ack);
+    return { ok: true, changed: false, ack: result.ack };
+  }
+
+  // ---- Claude connector (worker/src/mcp/) ----
+  // Writes allowed per person per hour through the connector. Counted per
+  // tool call, not per message, in this object's own storage.
+  static MCP_WRITES_PER_HOUR = 120;
+
+  async takeMcpWriteSlot(username: string, now: number): Promise<boolean> {
+    const key = MCP_RATE_PREFIX + username;
+    const rec = (await this.state.storage.get<{ start: number; count: number }>(key)) || { start: now, count: 0 };
+    const fresh = now - rec.start >= 60 * 60 * 1000 ? { start: now, count: 0 } : rec;
+    if (fresh.count >= ApsRoom.MCP_WRITES_PER_HOUR) return false;
+    fresh.count++;
+    await this.state.storage.put(key, fresh);
+    return true;
+  }
+
+  // Applies a connector write: each message through applyAsUser(), in
+  // order, stopping at the first one that fails. A message may carry
+  // `expect` — the job's updatedAt as the connector last read it (or
+  // `absent: true` for a job it is creating) — and is refused as stale if
+  // the job has moved on since, so a read-modify-write can never quietly
+  // undo someone else's edit made in between. Runs without awaiting
+  // anything between the check and the save, so nothing can slip in.
+  async applyMcpMessages(attachment: RoomAttachment, messages: McpMessage[]): Promise<{ results: ApplyAsUserResult[]; limited?: boolean }> {
+    if (!(await this.takeMcpWriteSlot(attachment.username, Date.now()))) return { results: [], limited: true };
+    const results: ApplyAsUserResult[] = [];
+    for (const m of messages) {
+      const { expect, ...msg } = m;
+      if (expect) {
+        const state = await this.loadRoomState();
+        const project = state.projects[expect.projectId];
+        const job = project && project.jobs ? project.jobs[expect.jobId] : undefined;
+        const stale = expect.absent ? !!job || !!(project && project.deletedIds && project.deletedIds[expect.jobId]) : (!job || (job.updatedAt || 0) !== (expect.updatedAt || 0));
+        if (stale) { results.push({ ok: false, changed: false, rejected: { reason: 'stale' } }); break; }
+      }
+      const r = await this.applyAsUser(msg as RoomMessage, attachment);
+      results.push(r);
+      if (!r.ok) break;
+    }
+    return { results };
   }
 
   // Two connections can have different assignedProjectId scoping (see
