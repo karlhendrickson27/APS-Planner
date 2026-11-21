@@ -40,8 +40,8 @@
     { "binding": "USERS_KV", "id": "1bfbded278d54b2ea1789fe4d8cceb2f" },
     // Claude connector (src/mcp/oauth.ts): OAuth clients, grants and tokens,
     // stored encrypted by @cloudflare/workers-oauth-provider. Create it once
-    // with `npx wrangler kv namespace create OAUTH_KV` and paste the id here.
-    { "binding": "OAUTH_KV", "id": "REPLACE_WITH_OAUTH_KV_ID" }
+    // with `npx wrangler kv namespace create OAUTH_KV` (done 2026-11-21).
+    { "binding": "OAUTH_KV", "id": "91b93d22803e4e539e4040c00df764af" }
   ],
 
   // Runs scheduled() in index.ts (which calls runBackup() — the CURRENT,

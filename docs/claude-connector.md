@@ -119,7 +119,7 @@ before/after without saving. All except `add_job_comment` also take a short
 ## Setup (one time)
 
 1. Create the storage for sign-ins and paste its id into
-   `worker/wrangler.jsonc` in place of `REPLACE_WITH_OAUTH_KV_ID`:
+   `worker/wrangler.jsonc` (already done for the live server, 2026-11-21, id 91b93d22803e4e539e4040c00df764af):
    ```
    cd worker
    npx wrangler kv namespace create OAUTH_KV
